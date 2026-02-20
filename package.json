@@ -1,0 +1,37 @@
+{
+  "name": "packer-3d-bin-packing",
+  "version": "1.0.0",
+  "description": "TypeScript wrapper for the 3D bin-packing library (betterwaysystems/packer)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "demo": "ts-node -P tsconfig.demo.json demo/index.ts",
+    "test": "jest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "3d",
+    "bin-packing",
+    "packing",
+    "logistics",
+    "typescript"
+  ],
+  "license": "BSD-3-Clause",
+  "dependencies": {
+    "tstl": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.0.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}
