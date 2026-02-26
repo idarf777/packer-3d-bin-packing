@@ -1,8 +1,17 @@
 ﻿/**
- * 3d-bin-packing デモプログラム
+ * 3d-bin-packing デモ: y 軸回転のみ許可
  *
- * 3D ビンパッキング問題を解くデモです。
- * 複数の箱（Wrapper）に複数の商品（Product）を効率よく梱包します。
+ * 商品の高さ (Y 軸方向) は固定し、水平面 (X-Z 面) 内での
+ * 90° 回転（幅と奥行きの入れ替え）だけを許可したパッキングのデモです。
+ *
+ * 【商品】 名前 W×H×D (mm)
+ *   深  139 × 40 × 110
+ *   中  200 × 31 × 130
+ *   浅  139 × 25 × 110
+ *
+ * 【箱】 名前 W×H×D (mm)
+ *   大  290 × 225 × 230
+ *   小  150 × 225 × 225
  */
 
 import packer from "../src";
@@ -26,14 +35,30 @@ function printSection(title: string): void {
 // 1. 入力データの定義
 // ─────────────────────────────────────
 
+/**
+ * y 軸回転のみ許可した Product を生成するヘルパー。
+ * setRotationMode("yAxis") を設定することで:
+ *   - 高さ (H) は常に固定
+ *   - 幅 (W) と奥行き (D) のみ入れ替え可能
+ */
+function makeProduct(
+  name: string,
+  width: number,
+  height: number,
+  length: number
+): packer.Product {
+  const product = new packer.Product(name, width, height, length);
+  product.setRotationMode("yAxis");
+  return product;
+}
+
 function buildWrapperArray(): packer.WrapperArray {
   const wrapperArray: packer.WrapperArray = new packer.WrapperArray();
 
   // Wrapper(名前, 価格, 幅W, 高さH, 奥行きD, 厚みthickness)
   wrapperArray.push(
-    new packer.Wrapper("大箱 (Large)",  1000, 40, 40, 15, 0),
-    new packer.Wrapper("中箱 (Medium)",  700, 20, 20, 10, 0),
-    new packer.Wrapper("小箱 (Small)",   500, 15, 15,  8, 0),
+    new packer.Wrapper("大 (290×225×230)",  200, 290, 225, 230, 0),
+    new packer.Wrapper("小 (150×225×225)",  100, 150, 225, 225, 0),
   );
 
   return wrapperArray;
@@ -42,15 +67,11 @@ function buildWrapperArray(): packer.WrapperArray {
 function buildInstanceArray(): packer.InstanceArray {
   const instanceArray: packer.InstanceArray = new packer.InstanceArray();
 
-  // Product: 商品(名前, 幅W, 高さH, 奥行きD)  ×個数
+  // 商品ごとに y 軸回転のみ許可して登録 (各10個)
   const items: Array<[packer.Instance, number]> = [
-    [new packer.Product("消しゴム",    1,  2,  5),  15],
-    [new packer.Product("本",         15, 30,  3),  15],
-    [new packer.Product("飲み物",      3,  3, 10),  15],
-    [new packer.Product("傘",          5,  5, 20),  15],
-    // Wrapper 自体も梱包対象にできる (箱の中の箱)
-    [new packer.Wrapper("ノートPC箱", 2000, 30, 40,  4, 2), 5],
-    [new packer.Wrapper("タブレット箱", 2500, 20, 28, 2, 0), 5],
+    [makeProduct("中 (200×31×130)",  200, 31, 130), 10],
+    [makeProduct("深 (139×40×110)",  139, 40, 110), 10],
+    [makeProduct("浅 (139×25×110)",  139, 25, 110), 10],
   ];
 
   for (const [instance, count] of items) {
@@ -70,21 +91,40 @@ function printInputSummary(
 ): void {
   printSection("利用可能な箱 (Wrappers)");
   console.log(
-    "  名前".padEnd(20) +
-    "価格".padStart(8) +
-    "  W×H×D"
+    "  名前".padEnd(26) +
+    "価格".padStart(6) +
+    "  体積 (mm³)"
   );
   for (let i = 0; i < wrapperArray.size(); i++) {
     const w = wrapperArray.at(i) as packer.Wrapper;
+    const vol = w.getWidth() * w.getHeight() * w.getLength();
     console.log(
-      `  ${w.getName().padEnd(18)}` +
-      `${String(w.getPrice()).padStart(8)}` +
-      `  ${w.getWidth()}×${w.getHeight()}×${w.getLength()}`
+      `  ${w.getName().padEnd(24)}` +
+      `${String(w.getPrice()).padStart(6)}` +
+      `  ${vol.toLocaleString()}`
     );
   }
 
-  printSection("梱包する商品 (Instances)");
-  console.log(`  合計アイテム数: ${instanceArray.size()}`);
+  printSection("梱包する商品 (Instances)  ※ 回転モード: yAxis (高さ固定)");
+  console.log(
+    "  名前".padEnd(26) +
+    "  W×H×D (mm)".padEnd(20) +
+    "体積 (mm³)"
+  );
+  for (let i = 0; i < instanceArray.size(); i++) {
+    // 同じ商品が複数登録されているため最初の1件ずつ表示
+    const inst = instanceArray.at(i) as packer.Product;
+    // 先頭の代表アイテムだけ表示 (名前でグルーピング)
+    if (i === 0 || inst.getName() !== (instanceArray.at(i - 1) as packer.Product).getName()) {
+      const vol = inst.getWidth() * inst.getHeight() * inst.getLength();
+      console.log(
+        `  ${inst.getName().padEnd(24)}` +
+        `  ${inst.getWidth()}×${inst.getHeight()}×${inst.getLength()}`.padEnd(20) +
+        `${vol.toLocaleString()}`
+      );
+    }
+  }
+  console.log(`\n  合計アイテム数: ${instanceArray.size()}`);
 }
 
 // ─────────────────────────────────────
@@ -107,27 +147,31 @@ function printResult(result: packer.WrapperArray): void {
   printSection("パッキング結果");
   console.log(`  使用した箱の数: ${result.size()}`);
 
+  let totalPackedCount = 0;
   let totalCost = 0;
+
   for (let i = 0; i < result.size(); i++) {
     const w = result.at(i) as packer.Wrapper;
-    const instanceCount = w.size();
+    const packedCount = w.size();
+    totalPackedCount += packedCount;
     totalCost += w.getPrice();
+
     console.log(
       `\n  [箱 ${i + 1}] ${w.getName()}` +
       ` (W${w.getWidth()} × H${w.getHeight()} × D${w.getLength()})` +
-      `  計 ${instanceCount} 個`
+      `  計 ${packedCount} 個`
     );
 
     // ヘッダー行
     console.log(
       "    " +
       "#".padEnd(5) +
-      "商品名".padEnd(20) +
+      "商品名".padEnd(26) +
       "原寸 W×H×D".padEnd(18) +
       "配置 X, Y, Z".padEnd(18) +
       "配置後 W×H×D"
     );
-    console.log("    " + "-".repeat(80));
+    console.log("    " + "-".repeat(85));
 
     // 各 Wrap (配置情報) を表示
     for (let j = 0; j < w.size(); j++) {
@@ -139,7 +183,7 @@ function printResult(result: packer.WrapperArray): void {
       console.log(
         "    " +
         String(j + 1).padEnd(5) +
-        inst.getName().padEnd(20) +
+        inst.getName().padEnd(26) +
         origSize.padEnd(18) +
         pos.padEnd(18) +
         laySize
@@ -147,7 +191,8 @@ function printResult(result: packer.WrapperArray): void {
     }
   }
 
-  console.log(`\n  合計梱包コスト: ${totalCost}`);
+  console.log(`\n  合計収納数  : ${totalPackedCount} / 30 個`);
+  console.log(`  合計梱包コスト: ${totalCost}`);
 }
 
 // ─────────────────────────────────────
@@ -155,7 +200,7 @@ function printResult(result: packer.WrapperArray): void {
 // ─────────────────────────────────────
 
 function main(): void {
-  printHeader("3D Bin Packing デモ");
+  printHeader("3D Bin Packing デモ — y 軸回転のみ許可");
 
   // --- 入力データ構築 ---
   const wrapperArray  = buildWrapperArray();
@@ -163,7 +208,7 @@ function main(): void {
   printInputSummary(wrapperArray, instanceArray);
 
   // --- パッキング実行 ---
-  console.log("\n最適化中...");
+  console.log("\n最適化中 (y 軸回転モード: 高さ固定, W/D のみ交換可能)...");
   const startTime = Date.now();
   const result = pack(wrapperArray, instanceArray);
   const elapsed = Date.now() - startTime;

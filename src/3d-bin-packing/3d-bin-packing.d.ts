@@ -915,6 +915,33 @@ declare namespace bws.packer {
          */
         setLength(val: number): void;
         /**
+         * Get whether rotation is allowed for this product.
+         * @returns false only when rotationMode is "none".
+         */
+        getAllowRotation(): boolean;
+        /**
+         * Set whether rotation is allowed for this product (backward-compatible).
+         * true  => rotationMode "all"
+         * false => rotationMode "none"
+         * To allow Y-axis-only rotation, use setRotationMode("yAxis") instead.
+         *
+         * @param val true to allow all rotations (default), false to forbid rotation.
+         */
+        setAllowRotation(val: boolean): void;
+        /**
+         * Get the rotation mode.
+         */
+        getRotationMode(): "all" | "yAxis" | "none";
+        /**
+         * Set the rotation mode.
+         *   "all"   - all 6 orientations (default)
+         *   "yAxis" - Y-axis rotation only: height stays fixed, width/length may be swapped
+         *   "none"  - no rotation (天地無用 / this side up)
+         *
+         * @param mode "all" | "yAxis" | "none"
+         */
+        setRotationMode(mode: "all" | "yAxis" | "none"): void;
+        /**
          * @inheritdoc
          */
         TYPE(): string;

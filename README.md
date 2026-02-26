@@ -8,6 +8,7 @@ Forked from Packer https://github.com/betterway-tinyman/packer .
 
 - XML出力機能を削除しsamchonへの依存を廃止
 - tstl 3.0.0に更新
+- 回転軸固定(Y軸まわり回転のみ許可する)機能を追加
 
 ## LICENSE
 
