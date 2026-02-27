@@ -1,0 +1,66 @@
+name: Create Release 1.1.0
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/create-release-1.1.0.yml'
+  workflow_dispatch:
+
+jobs:
+  create-tag-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if tag 1.1.0 already exists
+        id: check_tag
+        run: |
+          if git ls-remote --tags origin refs/tags/1.1.0 | grep -q "1.1.0"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Tag 1.1.0 already exists on origin."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report conflict and remediation if tag exists
+        if: steps.check_tag.outputs.exists == 'true'
+        run: |
+          echo "::error::Tag 1.1.0 already exists. To remediate:"
+          echo "  1. Delete the existing tag:  git push origin :refs/tags/1.1.0"
+          echo "  2. Delete the existing release via GitHub UI or: gh release delete 1.1.0 --yes"
+          echo "  3. Re-run this workflow."
+          exit 1
+
+      - name: Verify target commit exists
+        run: |
+          TARGET_SHA="d4c41ba233715170fe433e822d5130b270326c18"
+          if ! git cat-file -e "${TARGET_SHA}^{commit}" 2>/dev/null; then
+            echo "::error::Target commit ${TARGET_SHA} not found in repository history."
+            exit 1
+          fi
+          echo "Target commit ${TARGET_SHA} verified."
+
+      - name: Create and push annotated tag 1.1.0
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          # Tag the specific commit that was the tip of main when this release was prepared
+          git tag -a 1.1.0 d4c41ba233715170fe433e822d5130b270326c18 -m "Release 1.1.0"
+          git push origin 1.1.0
+
+      - name: Create GitHub Release for 1.1.0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create 1.1.0 \
+            --title "Release 1.1.0" \
+            --notes "Release 1.1.0" \
+            --target d4c41ba233715170fe433e822d5130b270326c18
