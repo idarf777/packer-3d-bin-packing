@@ -194,6 +194,7 @@ var boxologic;
             _this.coy = 0;
             _this.coz = 0;
             _this.is_packed = false;
+            _this.rotationMode = (typeof instance.getRotationMode === 'function') ? instance.getRotationMode() : "all";
             return _this;
         }
         Box.prototype.hit_test = function (obj) {
@@ -415,7 +416,20 @@ var boxologic;
          * <p> Iterations are done and parameters of the best solution are found. </p>
          */
         Boxologic.prototype.iterate_orientations = function () {
-            for (var orientation_1 = 1; orientation_1 <= 6; orientation_1++) {
+            // When any box has yAxis rotation mode, restricting pallet orientations to 1 and 2
+            // (only those that keep the pallet's Y axis as the height axis).
+            // Orientations 3-6 permute the pallet's Y axis to X or Z, which would violate
+            // the "height stays fixed" constraint of yAxis-mode boxes after write_box_file's
+            // axis remapping.
+            var hasYAxisBox = false;
+            for (var _i = 0; _i < this.box_array.size(); _i++) {
+                if (this.box_array.at(_i).rotationMode === "yAxis") {
+                    hasYAxisBox = true;
+                    break;
+                }
+            }
+            var maxOrientation = hasYAxisBox ? 2 : 6;
+            for (var orientation_1 = 1; orientation_1 <= maxOrientation; orientation_1++) {
                 this.pallet.set_orientation(orientation_1);
                 // CONSTRUCT LAYERS
                 this.construct_layers();
@@ -436,7 +450,7 @@ var boxologic;
                     break; // SUCCESS TO UTILIZE ALL
                 // IF THE PALLET IS REGULAR CUBE,
                 if (this.pallet.width == this.pallet.height && this.pallet.height == this.pallet.length)
-                    orientation_1 = 6; // DON'T ITERATE ALL ORIENTATIONS
+                    orientation_1 = maxOrientation; // DON'T ITERATE ALL ORIENTATIONS
             }
         };
         /**
@@ -904,6 +918,16 @@ var boxologic;
                 if (box.is_packed)
                     continue;
                 this.analyze_box(i, hmx, hy, hmy, hz, hmz, box.width, box.height, box.length);
+                // NO ROTATION (天地無用 / this side up)
+                if (box.rotationMode === "none")
+                    continue;
+                // Y-AXIS ROTATION ONLY: height stays fixed, swap width <-> length
+                if (box.rotationMode === "yAxis") {
+                    if (box.width !== box.length)
+                        this.analyze_box(i, hmx, hy, hmy, hz, hmz, box.length, box.height, box.width);
+                    continue;
+                }
+                // ALL ROTATIONS (default)
                 // WHEN REGULAR CUBE
                 if (box.width == box.length && box.length == box.height)
                     continue;
@@ -1865,6 +1889,13 @@ var bws;
                 _this.width = width;
                 _this.height = height;
                 _this.length = length;
+                /**
+                 * Rotation mode for packing.
+                 *   "all"   - all 6 orientations (default)
+                 *   "yAxis" - Y-axis rotation only: height stays fixed, width/length may be swapped
+                 *   "none"  - no rotation (天地無用 / this side up)
+                 */
+                _this._rotationMode = "all";
                 return _this;
             }
             /* -----------------------------------------------------------
@@ -1929,6 +1960,42 @@ var bws;
              */
             Product.prototype.setLength = function (val) {
                 this.length = val;
+            };
+            /**
+             * Get whether rotation is allowed for this product.
+             * @returns false only when rotationMode is "none".
+             */
+            Product.prototype.getAllowRotation = function () {
+                return this._rotationMode !== "none";
+            };
+            /**
+             * Set whether rotation is allowed for this product (backward-compatible).
+             * true  => rotationMode "all"
+             * false => rotationMode "none"
+             * To allow Y-axis-only rotation, use setRotationMode("yAxis") instead.
+             *
+             * @param val true to allow all rotations (default), false to forbid rotation.
+             */
+            Product.prototype.setAllowRotation = function (val) {
+                this._rotationMode = val ? "all" : "none";
+            };
+            /**
+             * Get the rotation mode.
+             * @returns "all" | "yAxis" | "none"
+             */
+            Product.prototype.getRotationMode = function () {
+                return this._rotationMode;
+            };
+            /**
+             * Set the rotation mode.
+             *   "all"   - all 6 orientations (default)
+             *   "yAxis" - Y-axis rotation only: height stays fixed, width/length may be swapped
+             *   "none"  - no rotation (天地無用 / this side up)
+             *
+             * @param mode "all" | "yAxis" | "none"
+             */
+            Product.prototype.setRotationMode = function (mode) {
+                this._rotationMode = mode;
             };
             return Product;
         }(packer.protocol.Entity));
