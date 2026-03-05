@@ -510,6 +510,10 @@ var boxologic;
             for (var i = 0; i < this.box_array.size(); i++) {
                 var box = this.box_array.at(i);
                 for (var j = 1; j <= 3; j++) {
+                    // For yAxis/none rotation mode, only the height dimension (j==2)
+                    // is valid as a layer thickness, because the Y-axis is fixed.
+                    if ((box.rotationMode === "yAxis" || box.rotationMode === "none") && j !== 2)
+                        continue;
                     var ex_dim = void 0; // STANDARD LENGTH ON THE DIMENSION
                     var dimen2 = void 0; // THE SECOND, LENGTH ON A RESIDUAL DIMENSION
                     var dimen3 = void 0; // THE THIRD, LENGTH ON A RESIDUAL DIMENSION
@@ -847,6 +851,10 @@ var boxologic;
                 if (box.is_packed)
                     continue;
                 for (var j = 1; j <= 3; j++) {
+                    // For yAxis/none rotation mode, only the height dimension (j==2)
+                    // is valid as a layer thickness, because the Y-axis is fixed.
+                    if ((box.rotationMode === "yAxis" || box.rotationMode === "none") && j !== 2)
+                        continue;
                     var ex_dim = void 0; // STANDARD LENGTH ON THE DIMENSION
                     var dim2 = void 0; // THE SECOND, LENGTH ON A RESIDUAL DIMENSION
                     var dim3 = void 0; // THE THIRD, LENGTH ON A RESIDUAL DIMENSION
