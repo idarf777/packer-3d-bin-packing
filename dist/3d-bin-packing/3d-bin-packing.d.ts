@@ -1056,6 +1056,13 @@ declare namespace bws.packer {
          */
         protected thickness: number;
         /**
+         * <p> Stable mode flag. </p>
+         *
+         * <p> When true, products' X-Z faces must not extend beyond the X-Z faces of the products below them
+         * (except at Y=0). This mode must be used with Y-axis rotation mode only. </p>
+         */
+        protected stableMode: boolean;
+        /**
          * Default Constructor.
          */
         constructor();
@@ -1074,6 +1081,18 @@ declare namespace bws.packer {
          * @param thickness A thickness causes shrinkness on containable volume.
          */
         constructor(name: string, price: number, width: number, height: number, length: number, thickness: number);
+        /**
+         * Construct from members including stable mode.
+         *
+         * @param name Name, identifier of a Wrapper.
+         * @param price Price, issued cost for a type of the Wrapper.
+         * @param width Width, dimensional length on the X-axis in 3D.
+         * @param height Height, dimensional length on the Y-axis in 3D.
+         * @param length Length, dimensional length on the Z-axis in 3D.
+         * @param thickness A thickness causes shrinkness on containable volume.
+         * @param stableMode Whether stable mode is enabled.
+         */
+        constructor(name: string, price: number, width: number, height: number, length: number, thickness: number, stableMode: boolean);
         /**
          * Key of a Wrapper is its name.
          */
@@ -1184,12 +1203,21 @@ declare namespace bws.packer {
          * Set thickness.
          */
         setThickness(val: number): void;
+        /**
+         * Get stable mode.
+         */
+        getStableMode(): boolean;
+        /**
+         * Set stable mode.
+         */
+        setStableMode(val: boolean): void;
         $name: string;
         $price: string;
         $width: string;
         $height: string;
         $length: string;
         $thickness: string;
+        $stableMode: string;
         readonly $scale: string;
         readonly $spaceUtilization: string;
     }
@@ -1236,6 +1264,18 @@ declare namespace bws.packer {
          * @param thickness A thickness, causes shrinkness on containable volume, of the sample.
          */
         constructor(name: string, price: number, width: number, height: number, length: number, thickness: number);
+        /**
+         * Construct from members of the {@link sample} including stable mode.
+         *
+         * @param name Name, identifier of the sample.
+         * @param price Price, issued cost for a type of the sample.
+         * @param width Width, dimensional length on the X-axis in 3D, of the sample.
+         * @param height Height, dimensional length on the Y-axis in 3D, of the sample.
+         * @param length Length, dimensional length on the Z-axis in 3D, of the sample.
+         * @param thickness A thickness, causes shrinkness on containable volume, of the sample.
+         * @param stableMode Whether stable mode is enabled.
+         */
+        constructor(name: string, price: number, width: number, height: number, length: number, thickness: number, stableMode: boolean);
         /**
          * Key of a WrapperGroup is dependent on its sample.
          */

@@ -282,10 +282,16 @@ var boxologic;
             this.total_box_volume = 0.0;
             this.layer_map = new tstl_1.default.HashMap();
             this.scrap_list = new tstl_1.default.List();
+            // STABLE MODE SETTING
+            this.stableMode = this.wrapper.getStableMode();
             // CHILDREN ELEMENTS - BOX
             this.box_array.assign(this.instanceArray.size(), null);
             for (var i = 0; i < this.instanceArray.size(); i++) {
                 var box = new boxologic.Box(this.instanceArray.at(i));
+                // FORCE Y-AXIS ROTATION MODE IN STABLE MODE
+                if (this.stableMode && box.rotationMode === "all") {
+                    box.rotationMode = "yAxis";
+                }
                 this.total_box_volume += box.volume;
                 this.box_array.set(i, box);
             }
@@ -947,6 +953,108 @@ var boxologic;
             }
         };
         /**
+         * <p> Check stability of a box placement in stable mode. </p>
+         *
+         * <p> In stable mode, a product's X-Z face must not extend beyond the X-Z faces of products below it
+         * (except at Y=0). This function checks if the proposed placement satisfies this constraint. </p>
+         *
+         * @param x X coordinate of the proposed placement
+         * @param z Z coordinate of the proposed placement
+         * @param width Width (X-dimension) of the box
+         * @param length Length (Z-dimension) of the box
+         * @param y Y coordinate of the proposed placement
+         * @return true if stable, false if unstable
+         */
+        Boxologic.prototype.check_stability = function (x, z, width, length, y) {
+            // At Y=0 (bottom), any placement is stable
+            if (y <= 0.01) {
+                return true;
+            }
+            var new_x1 = x;
+            var new_x2 = x + width;
+            var new_z1 = z;
+            var new_z2 = z + length;
+            // Find all boxes that could potentially support this box
+            var supportingBoxes = [];
+            var hasAdequateSupport = false;
+            for (var i = 0; i < this.box_array.size(); i++) {
+                var box = this.box_array.at(i);
+                if (!box.is_packed) {
+                    continue; // Skip unpacked boxes
+                }
+                var box_x1 = box.cox;
+                var box_x2 = box.cox + box.layout_width;
+                var box_z1 = box.coz;
+                var box_z2 = box.coz + box.layout_length;
+                var box_y1 = box.coy;
+                var box_y2 = box.coy + box.layout_height;
+                // Check if this box is below the proposed position
+                if (box_y2 <= y + 0.01 && box_y2 >= y - 0.01) {
+                    // Check if there's X-Z overlap
+                    var x_overlap = (new_x1 < box_x2) && (new_x2 > box_x1);
+                    var z_overlap = (new_z1 < box_z2) && (new_z2 > box_z1);
+                    if (x_overlap && z_overlap) {
+                        supportingBoxes.push({
+                            x1: box_x1, x2: box_x2,
+                            z1: box_z1, z2: box_z2
+                        });
+                        // STRICT STABILITY CHECK: The new box must be completely within the supporting box
+                        var isCompletelyWithin = (new_x1 >= box_x1 - 0.01) && (new_x2 <= box_x2 + 0.01) &&
+                            (new_z1 >= box_z1 - 0.01) && (new_z2 <= box_z2 + 0.01);
+                        if (isCompletelyWithin) {
+                            hasAdequateSupport = true;
+                        }
+                    }
+                }
+            }
+            // In stable mode, we need at least one supporting box that completely contains the new box's footprint
+            if (!hasAdequateSupport && y > 0.01) {
+                return false;
+            }
+            // ENHANCED STABILITY: Check if the new box has sufficient support area
+            if (y > 0.01) {
+                var totalSupportArea = 0;
+                var new_box_area = width * length;
+                for (var k = 0; k < supportingBoxes.length; k++) {
+                    var support = supportingBoxes[k];
+                    var overlap_x1 = Math.max(new_x1, support.x1);
+                    var overlap_x2 = Math.min(new_x2, support.x2);
+                    var overlap_z1 = Math.max(new_z1, support.z1);
+                    var overlap_z2 = Math.min(new_z2, support.z2);
+                    if (overlap_x1 < overlap_x2 && overlap_z1 < overlap_z2) {
+                        totalSupportArea += (overlap_x2 - overlap_x1) * (overlap_z2 - overlap_z1);
+                    }
+                }
+                // Require at least 90% of the box's area to be supported in strict stable mode
+                var supportRatio = totalSupportArea / new_box_area;
+                if (supportRatio < 0.9) {
+                    return false; // Insufficient support area
+                }
+            }
+            // Additional check: Ensure the new box doesn't extend beyond ALL its supporting boxes
+            for (var j = 0; j < supportingBoxes.length; j++) {
+                var support = supportingBoxes[j];
+                // Calculate overlapping area
+                var overlap_x1 = Math.max(new_x1, support.x1);
+                var overlap_x2 = Math.min(new_x2, support.x2);
+                var overlap_z1 = Math.max(new_z1, support.z1);
+                var overlap_z2 = Math.min(new_z2, support.z2);
+                if (overlap_x1 < overlap_x2 && overlap_z1 < overlap_z2) {
+                    // There is a meaningful overlap
+                    var overlap_area = (overlap_x2 - overlap_x1) * (overlap_z2 - overlap_z1);
+                    var new_box_area = width * length;
+                    // If this supporting box covers a significant portion, check strict containment
+                    if (overlap_area >= new_box_area * 0.8) {
+                        if (new_x1 < support.x1 - 0.01 || new_x2 > support.x2 + 0.01 ||
+                            new_z1 < support.z1 - 0.01 || new_z2 > support.z2 + 0.01) {
+                            return false; // Extends beyond primary supporting box
+                        }
+                    }
+                }
+            }
+            return true; // Stable placement
+        };
+        /**
          * <p> Analyzes each unpacked {@link Box box} to find the best fitting one to the empty space. </p>
          *
          * <p> Used by {@link find_box find_box()} to analyze box dimensions. </p>
@@ -967,6 +1075,26 @@ var boxologic;
             // OUT OF BOUNDARY RANGE
             if (dim1 > hmx || dim2 > hmy || dim3 > hmz)
                 return;
+            // STABLE MODE CHECK
+            if (this.stableMode) {
+                var current_x = this.scrap_min_z.cumx;
+                var current_z = this.scrap_min_z.cumz;
+                var current_y = this.packed_layout_height;
+                // For dim2 <= hy case (box fits within current layer)
+                if (dim2 <= hy) {
+                    var placement_y = current_y + hy - dim2;
+                    if (!this.check_stability(current_x, current_z, dim1, dim3, placement_y)) {
+                        return; // Skip this placement if unstable
+                    }
+                }
+                // For dim2 > hy case (box extends above current layer)
+                else {
+                    var placement_y = current_y + hy;
+                    if (!this.check_stability(current_x, current_z, dim1, dim3, placement_y)) {
+                        return; // Skip this placement if unstable
+                    }
+                }
+            }
             if (dim2 <= hy &&
                 (hy - dim2 < this.bfy ||
                     (hy - dim2 == this.bfy && hmx - dim1 < this.bfx) ||
@@ -2327,6 +2455,13 @@ var bws;
                  * so finally, it reduces total containable volume (-8 * thickness^3). </p>
                  */
                 this.thickness = 0.0;
+                /**
+                 * <p> Stable mode flag. </p>
+                 *
+                 * <p> When true, products' X-Z faces must not extend beyond the X-Z faces of the products below them
+                 * (except at Y=0). This mode must be used with Y-axis rotation mode only. </p>
+                 */
+                this.stableMode = false;
                 if (args.length == 1 && args[0] instanceof Wrapper) {
                     var wrapper = args[0];
                     this.name = wrapper.name;
@@ -2335,6 +2470,7 @@ var bws;
                     this.height = wrapper.height;
                     this.length = wrapper.length;
                     this.thickness = wrapper.thickness;
+                    this.stableMode = wrapper.stableMode;
                 }
                 else if (args.length == 6) {
                     this.name = args[0];
@@ -2343,6 +2479,15 @@ var bws;
                     this.height = args[3];
                     this.length = args[4];
                     this.thickness = args[5];
+                }
+                else if (args.length == 7) {
+                    this.name = args[0];
+                    this.price = args[1];
+                    this.width = args[2];
+                    this.height = args[3];
+                    this.length = args[4];
+                    this.thickness = args[5];
+                    this.stableMode = args[6];
                 }
             }
         }
@@ -2530,6 +2675,18 @@ var bws;
         Wrapper.prototype.setThickness = function (val) {
             this.thickness = val;
         };
+        /**
+         * Get stable mode.
+         */
+        Wrapper.prototype.getStableMode = function () {
+            return this.stableMode;
+        };
+        /**
+         * Set stable mode.
+         */
+        Wrapper.prototype.setStableMode = function (val) {
+            this.stableMode = val;
+        };
         Object.defineProperty(Wrapper.prototype, "$name", {
             /* -----------------------------------------------------------
                 COLUMN ITEMS
@@ -2566,6 +2723,12 @@ var bws;
         Object.defineProperty(Wrapper.prototype, "$thickness", {
             get: function () { return this.thickness + ""; },
             set: function (val) { this.thickness = parseFloat(val); },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(Wrapper.prototype, "$stableMode", {
+            get: function () { return this.stableMode + ""; },
+            set: function (val) { this.stableMode = val === "true"; },
             enumerable: true,
             configurable: true
         });
@@ -2611,6 +2774,9 @@ var bws;
                 }
                 else if (args.length == 6) {
                     this.sample = new packer.Wrapper(args[0], args[1], args[2], args[3], args[4], args[5]);
+                }
+                else if (args.length == 7) {
+                    this.sample = new packer.Wrapper(args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
                 }
                 this.allocatedInstanceArray = new packer.InstanceArray();
             }
