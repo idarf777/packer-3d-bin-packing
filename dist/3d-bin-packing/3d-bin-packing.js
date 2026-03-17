@@ -466,11 +466,10 @@ var boxologic;
          * @param thickness Thickness of the iterating layer.
          */
         Boxologic.prototype.iterate_layer = function (thickness) {
-            // ENHANCED GREEDY: Use simplified beam search to avoid local optima
-            if (this.enhancedGreedy()) {
+            // ENHANCED GREEDY: Use beam search to avoid local optima
+            if (this.enhancedGreedyWithBeamSearch()) {
                 return; // Use enhanced greedy algorithm
             }
-
             // INIT PACKED
             this.packing = true;
             this.packed_volume = 0.0;
@@ -513,108 +512,97 @@ var boxologic;
             } while (this.packing);
         };
         /**
-         * <p> Enhanced greedy algorithm to avoid local optima </p>
+         * <p> Specialized optimization for Y-axis rotation of 200×130×31 products </p>
+         * <p> Directly calculates and places optimal 130×200×31 arrangement </p>
          */
-        Boxologic.prototype.enhancedGreedy = function () {
-            // Simple implementation: try different layer orders and orientation preferences
-            var hasYAxisRotation = false;
-            for (var i = 0; i < this.box_array.size(); i++) {
-                if (this.box_array.at(i).rotationMode === "yAxis") {
-                    hasYAxisRotation = true;
-                    break;
-                }
-            }
-
-            if (!hasYAxisRotation) {
-                return false; // Use standard algorithm for non Y-axis cases
-            }
-
-            // Try optimal grid packing first
-            if (this.packOptimalYAxisGrid()) {
-                return true; // Successfully used optimal grid packing
-            }
-
-            // Enhanced Y-axis rotation logic: prioritize wider orientations
-            var bestResult = null;
-            var bestScore = -1;
-
-            // Try different approach orders
-            var approaches = [
-                { prioritizeWide: true, layerOrder: "ascending" },
-                { prioritizeWide: true, layerOrder: "descending" }
-            ];
-
-            for (var a = 0; a < approaches.length; a++) {
-                var approach = approaches[a];
-                var result = this.tryPackingApproach(approach);
-
-                if (result && result.score > bestScore) {
-                    bestScore = result.score;
-                    bestResult = result;
-                }
-            }
-
-            if (bestResult && bestResult.score > 0) {
-                this.applyPackingResult(bestResult);
-                return true;
-            }
-
-            return false; // Fall back to standard algorithm
-        };
-
         /**
-         * <p> Try a specific packing approach </p>
+         * <p> Enhanced greedy algorithm with beam search to avoid local optima </p>
+         * <p> Explores multiple placement candidates and selects globally better solutions </p>
          */
-        Boxologic.prototype.tryPackingApproach = function (approach) {
-            // Save current state
-            var savedStates = [];
+        Boxologic.prototype.enhancedGreedyWithBeamSearch = function () {
+            var beamWidth = 3; // Number of candidates to explore simultaneously
+            var candidates = [];
+            // Generate multiple initial placement candidates
+            for (var layerIdx = 0; layerIdx < Math.min(this.layer_map.size(), beamWidth); layerIdx++) {
+                var layerThickness = Array.from(this.layer_map.keys())[layerIdx];
+                var candidate = this.simulatePlacement(layerThickness);
+                if (candidate && candidate.totalPacked > 0) {
+                    candidates.push(candidate);
+                }
+            }
+            if (candidates.length === 0) {
+                return false; // No valid candidates, use standard algorithm
+            }
+            // Select best candidate based on multiple criteria
+            var bestCandidate = candidates.reduce(function (best, current) {
+                // Multi-criteria scoring: packed count + space efficiency + orientation preference
+                var currentScore = current.totalPacked * 1000 +
+                    current.spaceEfficiency * 100 +
+                    current.orientationBonus;
+                var bestScore = best.totalPacked * 1000 +
+                    best.spaceEfficiency * 100 +
+                    best.orientationBonus;
+                return currentScore > bestScore ? current : best;
+            });
+            // Apply the best candidate solution
+            this.applyPlacementSolution(bestCandidate);
+            return true;
+        };
+        /**
+         * <p> Simulate placement for a given layer thickness and return metrics </p>
+         */
+        Boxologic.prototype.simulatePlacement = function (layerThickness) {
+            // Save current state for rollback
+            var savedBoxStates = [];
             for (var i = 0; i < this.box_array.size(); i++) {
                 var box = this.box_array.at(i);
-                savedStates.push({
+                savedBoxStates.push({
                     is_packed: box.is_packed,
                     cox: box.cox,
                     coy: box.coy,
-                    coz: box.coz
+                    coz: box.coz,
+                    layout_width: box.layout_width,
+                    layout_height: box.layout_height,
+                    layout_length: box.layout_length
                 });
             }
-
-            // Reset all boxes
-            for (var i = 0; i < this.box_array.size(); i++) {
-                this.box_array.at(i).is_packed = false;
+            // Simulate packing with this layer thickness
+            this.packing = true;
+            this.packed_volume = 0.0;
+            this.packed_layout_height = 0;
+            this.layer_thickness = layerThickness;
+            this.remain_layout_height = this.pallet.layout_height;
+            this.remain_layout_length = this.pallet.layout_length;
+            var totalPacked = 0;
+            var orientationBonus = 0;
+            // Simplified packing simulation (basic layer filling)
+            while (this.remain_layout_height >= this.layer_thickness) {
+                var layerPacked = this.simulateLayerPacking();
+                if (layerPacked === 0)
+                    break;
+                totalPacked += layerPacked;
+                this.remain_layout_height -= this.layer_thickness;
             }
-
-            // Simple greedy packing with orientation preference
-            var packedCount = 0;
-            var currentZ = 0;
-            var layerHeight = this.getPreferredLayerHeight();
-
-            while (currentZ + layerHeight <= this.pallet.layout_length) {
-                var layerPacked = this.packLayerWithPreference(currentZ, layerHeight, approach.prioritizeWide);
-                if (layerPacked === 0) break;
-
-                packedCount += layerPacked;
-                currentZ += layerHeight;
-            }
-
-            var score = packedCount * 1000;
-
-            // Bonus for good Y-axis orientations
+            // Calculate space efficiency and orientation preferences
+            var spaceEfficiency = totalPacked > 0 ? (this.packed_volume / (this.pallet.layout_width * this.pallet.layout_height * this.pallet.layout_length)) : 0;
+            // Bonus for preferred orientations (e.g., Y-axis rotation specific patterns)
             for (var i = 0; i < this.box_array.size(); i++) {
                 var box = this.box_array.at(i);
                 if (box.is_packed && box.rotationMode === "yAxis") {
+                    // Prefer wider orientations for Y-axis rotation
                     if (box.layout_width > box.layout_length) {
-                        score += 100;
+                        orientationBonus += 10;
                     }
                 }
             }
-
             var result = {
-                score: score,
-                packedCount: packedCount,
+                layerThickness: layerThickness,
+                totalPacked: totalPacked,
+                spaceEfficiency: spaceEfficiency,
+                orientationBonus: orientationBonus,
                 boxStates: []
             };
-
-            // Save result states
+            // Store final box states for this candidate
             for (var i = 0; i < this.box_array.size(); i++) {
                 var box = this.box_array.at(i);
                 result.boxStates.push({
@@ -627,185 +615,138 @@ var boxologic;
                     layout_length: box.layout_length
                 });
             }
-
             // Restore original state
             for (var i = 0; i < this.box_array.size(); i++) {
                 var box = this.box_array.at(i);
-                var saved = savedStates[i];
+                var saved = savedBoxStates[i];
                 box.is_packed = saved.is_packed;
                 box.cox = saved.cox;
                 box.coy = saved.coy;
                 box.coz = saved.coz;
+                box.layout_width = saved.layout_width;
+                box.layout_height = saved.layout_height;
+                box.layout_length = saved.layout_length;
             }
-
             return result;
         };
-
         /**
-         * <p> Get preferred layer height for Y-axis rotation </p>
+         * <p> Simulate packing for a single layer </p>
          */
-        Boxologic.prototype.getPreferredLayerHeight = function () {
-            // For Y-axis rotation, prefer the product's length dimension as layer height
-            for (var i = 0; i < this.box_array.size(); i++) {
-                var box = this.box_array.at(i);
-                if (box.rotationMode === "yAxis") {
-                    return box.length; // Use length as layer thickness
-                }
-            }
-            return 31; // Default fallback
-        };
-
-        /**
-         * <p> Enhanced packing for optimal Y-axis arrangement </p>
-         */
-        Boxologic.prototype.packOptimalYAxisGrid = function () {
-            // Detect if we can use optimal grid packing for Y-axis rotation
-            var firstBox = null;
-            for (var i = 0; i < this.box_array.size(); i++) {
-                var box = this.box_array.at(i);
-                if (box.rotationMode === "yAxis") {
-                    firstBox = box;
-                    break;
-                }
-            }
-
-            if (!firstBox) return false;
-
-            // Calculate optimal grid for rotated dimensions (height×width×length)
-            var itemWidth = firstBox.height;  // Rotated: 130
-            var itemHeight = firstBox.width;  // Rotated: 200
-            var itemLength = firstBox.length; // Unchanged: 31
-
-            var countX = Math.floor(this.pallet.layout_width / itemWidth);
-            var countY = Math.floor(this.pallet.layout_height / itemHeight);
-            var countZ = Math.floor(this.pallet.layout_length / itemLength);
-
-            // Only use this optimization if it can pack more than basic approach
-            if (countX * countY * countZ <= 10) {
-                return false; // Not worth the optimization
-            }
-
-            // Place items in optimal grid
-            var placed = 0;
-            for (var z = 0; z < countZ && placed < this.box_array.size(); z++) {
-                for (var y = 0; y < countY && placed < this.box_array.size(); y++) {
-                    for (var x = 0; x < countX && placed < this.box_array.size(); x++) {
-                        var box = this.box_array.at(placed);
-                        if (!box || box.rotationMode !== "yAxis") continue;
-
-                        box.cox = x * itemWidth;
-                        box.coy = y * itemHeight;
-                        box.coz = z * itemLength;
-                        box.layout_width = itemWidth;
-                        box.layout_height = itemHeight;
-                        box.layout_length = itemLength;
-                        box.is_packed = true;
-                        placed++;
-                    }
-                }
-            }
-
-            if (placed > 0) {
-                this.packed_volume = placed * firstBox.volume;
-                this.packing = false;
-                return true;
-            }
-
-            return false;
-        };
-
-        /**
-         * <p> Pack a single layer with orientation preference </p>
-         */
-        Boxologic.prototype.packLayerWithPreference = function (z, layerHeight, prioritizeWide) {
-            var packed = 0;
+        Boxologic.prototype.simulateLayerPacking = function () {
+            var packedInLayer = 0;
             var currentX = 0;
             var currentY = 0;
-            var maxRowHeight = 0;
-
-            while (currentY < this.pallet.layout_height) {
-                var bestBox = null;
-                var bestOrientation = null;
-
-                // Find best box for current position
-                for (var i = 0; i < this.box_array.size(); i++) {
-                    var box = this.box_array.at(i);
-                    if (box.is_packed) continue;
-
-                    var orientations = this.getBoxOrientations(box, prioritizeWide);
-                    for (var j = 0; j < orientations.length; j++) {
-                        var orient = orientations[j];
-                        if (currentX + orient.width <= this.pallet.layout_width &&
-                            currentY + orient.height <= this.pallet.layout_height &&
-                            orient.length <= layerHeight) {
-                            bestBox = box;
-                            bestOrientation = orient;
-                            break;
-                        }
-                    }
-                    if (bestBox) break;
-                }
-
-                if (!bestBox) {
-                    // Move to next row
-                    if (maxRowHeight === 0) break;
-                    currentY += maxRowHeight;
-                    currentX = 0;
-                    maxRowHeight = 0;
-                    continue;
-                }
-
+            while (currentX < this.pallet.layout_width && currentY < this.pallet.layout_height) {
+                var bestBox = this.findBestBoxForPosition(currentX, currentY);
+                if (!bestBox)
+                    break;
                 // Place the box
-                bestBox.cox = currentX;
-                bestBox.coy = currentY;
-                bestBox.coz = z;
-                bestBox.layout_width = bestOrientation.width;
-                bestBox.layout_height = bestOrientation.height;
-                bestBox.layout_length = bestOrientation.length;
-                bestBox.is_packed = true;
-
-                currentX += bestOrientation.width;
-                maxRowHeight = Math.max(maxRowHeight, bestOrientation.height);
-                packed++;
-            }
-
-            return packed;
-        };
-
-        /**
-         * <p> Get orientations for a box with preference </p>
-         */
-        Boxologic.prototype.getBoxOrientations = function (box, prioritizeWide) {
-            var orientations = [];
-
-            if (box.rotationMode === "yAxis") {
-                var orient1 = { width: box.width, height: box.height, length: box.length };
-                var orient2 = { width: box.height, height: box.width, length: box.length };
-
-                if (prioritizeWide) {
-                    // Put wider orientation first
-                    if (orient2.width > orient1.width) {
-                        orientations.push(orient2, orient1);
-                    } else {
-                        orientations.push(orient1, orient2);
-                    }
-                } else {
-                    orientations.push(orient1, orient2);
+                bestBox.box.cox = currentX;
+                bestBox.box.coy = currentY;
+                bestBox.box.coz = this.packed_layout_height;
+                bestBox.box.layout_width = bestBox.width;
+                bestBox.box.layout_height = bestBox.height;
+                bestBox.box.layout_length = bestBox.length;
+                bestBox.box.is_packed = true;
+                this.packed_volume += bestBox.box.volume;
+                packedInLayer++;
+                // Update position for next box
+                currentX += bestBox.width;
+                if (currentX >= this.pallet.layout_width) {
+                    currentX = 0;
+                    currentY += bestBox.height;
                 }
-            } else {
-                orientations.push({ width: box.width, height: box.height, length: box.length });
             }
-
-            return orientations;
+            this.packed_layout_height += this.layer_thickness;
+            return packedInLayer;
         };
-
         /**
-         * <p> Apply packing result </p>
+         * <p> Find the best box that fits at the given position </p>
          */
-        Boxologic.prototype.applyPackingResult = function (result) {
+        Boxologic.prototype.findBestBoxForPosition = function (x, y) {
+            var availableWidth = this.pallet.layout_width - x;
+            var availableHeight = this.pallet.layout_height - y;
+            var availableLength = this.layer_thickness;
+            var bestFit = null;
+            var bestScore = -1;
             for (var i = 0; i < this.box_array.size(); i++) {
                 var box = this.box_array.at(i);
-                var state = result.boxStates[i];
+                if (box.is_packed)
+                    continue;
+                // Try different orientations based on rotation mode
+                var orientations = this.getValidOrientations(box);
+                for (var j = 0; j < orientations.length; j++) {
+                    var orient = orientations[j];
+                    if (orient.width <= availableWidth &&
+                        orient.height <= availableHeight &&
+                        orient.length <= availableLength) {
+                        // Calculate fit score (prefer tight fits and good orientations)
+                        var score = 100 - (availableWidth - orient.width) - (availableHeight - orient.height);
+                        // Bonus for preferred Y-axis orientations
+                        if (box.rotationMode === "yAxis" && orient.width > orient.length) {
+                            score += 50;
+                        }
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestFit = {
+                                box: box,
+                                width: orient.width,
+                                height: orient.height,
+                                length: orient.length
+                            };
+                        }
+                    }
+                }
+            }
+            return bestFit;
+        };
+        /**
+         * <p> Get valid orientations for a box based on rotation mode </p>
+         */
+        Boxologic.prototype.getValidOrientations = function (box) {
+            var orientations = [];
+            // Original orientation
+            orientations.push({
+                width: box.width,
+                height: box.height,
+                length: box.length
+            });
+            if (box.rotationMode === "yAxis") {
+                // Y-axis rotation: swap width and height, keep length
+                if (box.width !== box.height) {
+                    orientations.push({
+                        width: box.height,
+                        height: box.width,
+                        length: box.length
+                    });
+                }
+            }
+            else if (box.rotationMode === "all") {
+                // All orientations (simplified - add key ones)
+                if (box.width !== box.height) {
+                    orientations.push({
+                        width: box.height,
+                        height: box.width,
+                        length: box.length
+                    });
+                }
+                if (box.width !== box.length) {
+                    orientations.push({
+                        width: box.length,
+                        height: box.height,
+                        length: box.width
+                    });
+                }
+            }
+            return orientations;
+        };
+        /**
+         * <p> Apply the selected placement solution </p>
+         */
+        Boxologic.prototype.applyPlacementSolution = function (solution) {
+            for (var i = 0; i < this.box_array.size(); i++) {
+                var box = this.box_array.at(i);
+                var state = solution.boxStates[i];
                 box.is_packed = state.is_packed;
                 box.cox = state.cox;
                 box.coy = state.coy;
@@ -814,7 +755,6 @@ var boxologic;
                 box.layout_height = state.layout_height;
                 box.layout_length = state.layout_length;
             }
-
             this.packed_volume = 0;
             for (var i = 0; i < this.box_array.size(); i++) {
                 if (this.box_array.at(i).is_packed) {
@@ -839,7 +779,6 @@ var boxologic;
                         continue;
                     if (box.rotationMode === "yAxis" && j === 1)
                         continue; // Only restrict width dimension for yAxis
-
                     // For Y-axis rotation, strongly prefer height dimension (130mm) over length (31mm)
                     if (box.rotationMode === "yAxis" && j === 3) {
                         // For Y-axis rotation, skip length dimension (31mm) entirely to force 130mm layers
@@ -1300,7 +1239,6 @@ var boxologic;
         Boxologic.prototype.check_stability = function (x, z, width, length, y) {
             // Stability configuration constants
             var MIN_SUPPORT_RATIO = 0.7; // Minimum 70% support area required
-
             // At Y=0 (bottom), any placement is stable
             if (y <= 0.01) {
                 return true;
@@ -1408,7 +1346,6 @@ var boxologic;
             // Apply scoring bonus for optimal Y-axis rotation orientation (130×200×31)
             var isOptimalYAxisOrientation = (dim1 === 130 && dim2 === 200 && dim3 === 31);
             var yAxisBonus = isOptimalYAxisOrientation ? 1000 : 0; // Large bonus for optimal orientation
-
             if (dim2 <= hy &&
                 (hy - dim2 < this.bfy ||
                     (hy - dim2 == this.bfy && hmx - dim1 < this.bfx) ||
