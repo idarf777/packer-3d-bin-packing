@@ -466,10 +466,6 @@ var boxologic;
          * @param thickness Thickness of the iterating layer.
          */
         Boxologic.prototype.iterate_layer = function (thickness) {
-            // ENHANCED GREEDY: Use beam search to avoid local optima
-            if (this.enhancedGreedyWithBeamSearch()) {
-                return; // Use enhanced greedy algorithm
-            }
             // INIT PACKED
             this.packing = true;
             this.packed_volume = 0.0;
@@ -523,8 +519,9 @@ var boxologic;
             var beamWidth = 3; // Number of candidates to explore simultaneously
             var candidates = [];
             // Generate multiple initial placement candidates
-            for (var layerIdx = 0; layerIdx < Math.min(this.layer_map.size(), beamWidth); layerIdx++) {
-                var layerThickness = Array.from(this.layer_map.keys())[layerIdx];
+            var layerIdx = 0;
+            for (var it = this.layer_map.begin(); !it.equals(this.layer_map.end()) && layerIdx < beamWidth; it = it.next(), layerIdx++) {
+                var layerThickness = it.first;
                 var candidate = this.simulatePlacement(layerThickness);
                 if (candidate && candidate.totalPacked > 0) {
                     candidates.push(candidate);
@@ -1325,8 +1322,9 @@ var boxologic;
                 return;
             // STABLE MODE CHECK
             if (this.stableMode) {
-                var current_x = this.scrap_min_z.cumx;
-                var current_z = this.scrap_min_z.cumz;
+                var prev = this.scrap_min_z.prev();
+                var current_x = prev.equals(this.scrap_list.end()) ? 0 : prev.value.cumx;
+                var current_z = this.scrap_min_z.value.cumz;
                 var current_y = this.packed_layout_height;
                 // For dim2 <= hy case (box fits within current layer)
                 if (dim2 <= hy) {
@@ -1472,12 +1470,7 @@ var boxologic;
             box.layout_height = this.cbox_layout_height;
             box.layout_length = this.cbox_layout_length;
             this.packed_volume += box.volume;
-            if (this.packing_best) {
-                // BOXOLOGIC DOESN'T MEMORIZE OPTIMIZED ORIENTATION
-                // THUS IT NEEDS ADDITIONAL PROCEDURES FOR EXPORTING
-                this.write_box_file();
-            }
-            else if (this.packed_volume == this.pallet.volume || this.packed_volume == this.total_box_volume) {
+            if (!this.packing_best && (this.packed_volume == this.pallet.volume || this.packed_volume == this.total_box_volume)) {
                 this.packing = false;
                 this.hundred_percent = true;
             }
@@ -1512,6 +1505,14 @@ var boxologic;
             this.pallet.set_orientation(this.best_orientation);
             this.construct_layers();
             this.iterate_layer(this.best_layer);
+            // Apply coordinate transformations after packing is complete
+            // so that stability checks during packing use consistent internal coordinates
+            for (var i = 0; i < this.box_array.size(); i++) {
+                if (this.box_array.at(i).is_packed) {
+                    this.cboxi = i;
+                    this.write_box_file();
+                }
+            }
         };
         /**
          * <p> Determine a {@link Box}. </p>

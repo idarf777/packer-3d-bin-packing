@@ -738,3 +738,42 @@ describe("安定モード配置検証テスト", () => {
     expect(totalPacked).toBe(4);
   });
 });
+
+// ─────────────────────────────────────
+// 特定サイズの梱包テスト
+// ─────────────────────────────────────
+
+describe("特定サイズの梱包テスト", () => {
+  it("290×225×230 の箱に 200×31×130 の製品を 14 個詰められる", () => {
+    const wrappers: packer.WrapperArray = new packer.WrapperArray();
+    wrappers.push(new packer.Wrapper("箱", 1000, 290, 225, 230, 0));
+
+    const instances: packer.InstanceArray = new packer.InstanceArray();
+    instances.insert(instances.end(), 14, new packer.Product("製品", 200, 31, 130));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+    expect(result.size()).toBe(1);
+
+    const usedWrapper = result.at(0) as packer.Wrapper;
+    expect(usedWrapper.size()).toBe(14);
+  });
+
+  it("290×225×230 の箱（安定モード）に 200×31×130 の製品を 14 個詰められる", () => {
+    const wrappers: packer.WrapperArray = new packer.WrapperArray();
+    wrappers.push(new packer.Wrapper("箱", 1000, 290, 225, 230, 0, true));
+
+    const instances: packer.InstanceArray = new packer.InstanceArray();
+    instances.insert(instances.end(), 14, new packer.Product("製品", 200, 31, 130));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+
+    let totalPacked = 0;
+    for (let i = 0; i < result.size(); i++) {
+      const w = result.at(i) as packer.Wrapper;
+      expect(w.getStableMode()).toBe(true);
+      totalPacked += w.size();
+    }
+    expect(totalPacked).toBe(14);
+    expect(result.size()).toBe(1);
+  });
+});
