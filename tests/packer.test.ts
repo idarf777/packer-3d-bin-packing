@@ -391,81 +391,64 @@ describe("安定モード統合テスト", () => {
 // ─────────────────────────────────────
 
 describe("安定モード配置検証テスト", () => {
+  const MIN_SUPPORT_RATIO = 0.7; // アルゴリズムと同じ 70%
+
   /**
    * 安定性を検証するヘルパー関数
-   * wrapperの底(Y=0)以外では、上のproductのX-Z面が下のproductのX-Z面と同じか完全に内側にあることを検証
+   * Y=0 以外では、複数の下側製品による合計サポート面積が
+   * 上側製品の X-Z 面積の 70% 以上であることを検証する。
    */
   function validateStabilityConstraints(wrapper: packer.Wrapper): { isValid: boolean; violations: string[] } {
     const violations: string[] = [];
     const wraps: packer.Wrap[] = [];
 
-    // すべてのWrapを配列に変換
     for (let i = 0; i < wrapper.size(); i++) {
       wraps.push(wrapper.at(i) as packer.Wrap);
     }
 
-    // Y座標でソート（下から上へ）
     wraps.sort((a, b) => a.getY() - b.getY());
 
     for (let i = 0; i < wraps.length; i++) {
-      const upperWrap = wraps[i];
-      const upperY = upperWrap.getY();
+      const upper = wraps[i];
+      const upperY = upper.getY();
+      if (upperY < 0.01) continue;
 
-      // Y=0の場合はスキップ（底面は安定性制約なし）
-      if (upperY === 0) continue;
+      const ux1 = upper.getX();
+      const ux2 = ux1 + upper.getLayoutWidth();
+      const uz1 = upper.getZ();
+      const uz2 = uz1 + upper.getLength();
+      const upperArea = upper.getLayoutWidth() * upper.getLength();
 
-      const upperX1 = upperWrap.getX();
-      const upperX2 = upperWrap.getX() + upperWrap.getLayoutWidth();
-      const upperZ1 = upperWrap.getZ();
-      const upperZ2 = upperWrap.getZ() + upperWrap.getLength();
-
-      // この上のwrapを支える下のwrapを探す
-      let isSupported = false;
-      let supportDetails: string[] = [];
+      let totalSupportArea = 0;
 
       for (let j = 0; j < wraps.length; j++) {
         if (i === j) continue;
+        const lower = wraps[j];
+        const lowerTop = lower.getY() + lower.getLayoutHeight();
 
-        const lowerWrap = wraps[j];
-        const lowerY2 = lowerWrap.getY() + lowerWrap.getLayoutHeight();
+        if (Math.abs(lowerTop - upperY) >= 0.01) continue;
 
-        // 下にあるwrapで、上面がupper wrapの底面に接触している場合
-        if (lowerY2 <= upperY && Math.abs(lowerY2 - upperY) < 0.01) {
-          const lowerX1 = lowerWrap.getX();
-          const lowerX2 = lowerWrap.getX() + lowerWrap.getLayoutWidth();
-          const lowerZ1 = lowerWrap.getZ();
-          const lowerZ2 = lowerWrap.getZ() + lowerWrap.getLength();
+        const lx1 = lower.getX();
+        const lx2 = lx1 + lower.getLayoutWidth();
+        const lz1 = lower.getZ();
+        const lz2 = lz1 + lower.getLength();
 
-          // X-Z面の重なりチェック
-          const xOverlap = (upperX1 < lowerX2) && (upperX2 > lowerX1);
-          const zOverlap = (upperZ1 < lowerZ2) && (upperZ2 > lowerZ1);
+        const ox1 = Math.max(ux1, lx1);
+        const ox2 = Math.min(ux2, lx2);
+        const oz1 = Math.max(uz1, lz1);
+        const oz2 = Math.min(uz2, lz2);
 
-          if (xOverlap && zOverlap) {
-            // 安定性制約チェック: 上のwrapが下のwrapのX-Z面から はみ出していないか
-            const xWithinBounds = (upperX1 >= lowerX1 - 0.01) && (upperX2 <= lowerX2 + 0.01);
-            const zWithinBounds = (upperZ1 >= lowerZ1 - 0.01) && (upperZ2 <= lowerZ2 + 0.01);
-
-            if (xWithinBounds && zWithinBounds) {
-              isSupported = true;
-              supportDetails.push(
-                `${upperWrap.getInstance().getName()}(${upperX1.toFixed(1)},${upperY.toFixed(1)},${upperZ1.toFixed(1)}) は ` +
-                `${lowerWrap.getInstance().getName()}(${lowerX1.toFixed(1)},${lowerWrap.getY().toFixed(1)},${lowerZ1.toFixed(1)}) に安定して支えられている`
-              );
-            } else {
-              violations.push(
-                `${upperWrap.getInstance().getName()}(${upperX1.toFixed(1)},${upperY.toFixed(1)},${upperZ1.toFixed(1)} - ${upperX2.toFixed(1)},${(upperY + upperWrap.getLayoutHeight()).toFixed(1)},${upperZ2.toFixed(1)}) が ` +
-                `${lowerWrap.getInstance().getName()}(${lowerX1.toFixed(1)},${lowerWrap.getY().toFixed(1)},${lowerZ1.toFixed(1)} - ${lowerX2.toFixed(1)},${lowerY2.toFixed(1)},${lowerZ2.toFixed(1)}) からはみ出している: ` +
-                `X範囲[${xWithinBounds ? "OK" : "NG"}] Z範囲[${zWithinBounds ? "OK" : "NG"}]`
-              );
-            }
-          }
+        if (ox1 < ox2 && oz1 < oz2) {
+          totalSupportArea += (ox2 - ox1) * (oz2 - oz1);
         }
       }
 
-      // Y=0以外で支えがない場合はエラー
-      if (!isSupported && upperY > 0.01) {
+      const ratio = upperArea > 0 ? totalSupportArea / upperArea : 0;
+
+      if (ratio < MIN_SUPPORT_RATIO) {
         violations.push(
-          `${upperWrap.getInstance().getName()}(${upperX1.toFixed(1)},${upperY.toFixed(1)},${upperZ1.toFixed(1)}) に適切な支えが見つからない`
+          `${upper.getInstance().getName()}(${ux1.toFixed(1)},${upperY.toFixed(1)},${uz1.toFixed(1)}) ` +
+          `サポート率 ${(ratio * 100).toFixed(1)}% < ${(MIN_SUPPORT_RATIO * 100).toFixed(0)}%`
         );
       }
     }
