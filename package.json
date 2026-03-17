@@ -1,6 +1,6 @@
 {
   "name": "packer-3d-bin-packing",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "TypeScript wrapper for the 3D bin-packing library (betterwaysystems/packer)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
