@@ -946,7 +946,7 @@ var boxologic;
         /**
          * <p> Check stability of a box placement in stable mode. </p>
          *
-         * <p> In stable mode, a product's X-Z face must not extend beyond the X-Z faces of products below it
+         * <p> In stable mode, at least 70% of a product's X-Z face must be supported by products below it
          * (except at Y=0). This function checks if the proposed placement satisfies this constraint. </p>
          *
          * @param x X coordinate of the proposed placement
@@ -996,18 +996,13 @@ var boxologic;
                             z1: box_z1, z2: box_z2
                         });
 
-                        // STRICT STABILITY CHECK: The new box must be completely within the supporting box
-                        var isCompletelyWithin = (new_x1 >= box_x1 - 0.01) && (new_x2 <= box_x2 + 0.01) &&
-                                                (new_z1 >= box_z1 - 0.01) && (new_z2 <= box_z2 + 0.01);
-
-                        if (isCompletelyWithin) {
-                            hasAdequateSupport = true;
-                        }
+                        // Mark that we have some support (will check percentage later)
+                        hasAdequateSupport = true;
                     }
                 }
             }
 
-            // In stable mode, we need at least one supporting box that completely contains the new box's footprint
+            // In stable mode, we need at least some supporting boxes with adequate coverage
             if (!hasAdequateSupport && y > 0.01) {
                 return false;
             }
@@ -1029,9 +1024,9 @@ var boxologic;
                     }
                 }
 
-                // Require at least 90% of the box's area to be supported in strict stable mode
+                // Require at least 70% of the box's area to be supported in stable mode
                 var supportRatio = totalSupportArea / new_box_area;
-                if (supportRatio < 0.9) {
+                if (supportRatio < 0.7) {
                     return false; // Insufficient support area
                 }
             }
