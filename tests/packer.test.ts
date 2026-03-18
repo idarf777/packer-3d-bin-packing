@@ -947,3 +947,246 @@ describe("特定サイズの梱包テスト", () => {
     expect(result.size()).toBe(1);
   });
 });
+
+// ─────────────────────────────────────
+// fillRates テスト
+// ─────────────────────────────────────
+
+describe("fillRates", () => {
+  it("optimize() の戻り値に fillRates プロパティが存在する", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(new packer.Wrapper("箱", 1000, 30, 30, 30, 0));
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 1, new packer.Product("小物", 5, 5, 5));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+    expect(result.fillRates).toBeDefined();
+    expect(Array.isArray(result.fillRates)).toBe(true);
+  });
+
+  it("fillRates の要素数が wrappers の数と一致する", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(new packer.Wrapper("箱", 1000, 30, 30, 30, 0));
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 3, new packer.Product("小物", 5, 5, 5));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+    expect(result.fillRates.length).toBe(result.size());
+  });
+
+  it("fillRates の各要素に必要なプロパティが含まれる", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(new packer.Wrapper("テスト箱", 1000, 20, 20, 20, 0));
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 2, new packer.Product("品物", 10, 10, 10));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+
+    for (const entry of result.fillRates) {
+      expect(entry).toHaveProperty("name");
+      expect(entry).toHaveProperty("fillRate");
+      expect(entry).toHaveProperty("packedVolume");
+      expect(entry).toHaveProperty("containableVolume");
+      expect(entry).toHaveProperty("packedCount");
+    }
+  });
+
+  it("fillRate が 0〜1 の範囲である", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(new packer.Wrapper("箱", 1000, 30, 30, 30, 0));
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 5, new packer.Product("品物", 10, 10, 10));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+
+    for (const entry of result.fillRates) {
+      expect(entry.fillRate).toBeGreaterThanOrEqual(0);
+      expect(entry.fillRate).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("name が対応する Wrapper の名前と一致する", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(new packer.Wrapper("大箱", 1000, 40, 40, 15, 0));
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 3, new packer.Product("消しゴム", 1, 2, 5));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+
+    for (let i = 0; i < result.size(); i++) {
+      const wrapper = result.at(i) as packer.Wrapper;
+      expect(result.fillRates[i].name).toBe(wrapper.getName());
+    }
+  });
+
+  it("packedCount が Wrapper 内のアイテム数と一致する", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(new packer.Wrapper("箱", 1000, 30, 30, 30, 0));
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 4, new packer.Product("品物", 8, 8, 8));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+
+    for (let i = 0; i < result.size(); i++) {
+      const wrapper = result.at(i) as packer.Wrapper;
+      expect(result.fillRates[i].packedCount).toBe(wrapper.size());
+    }
+  });
+
+  it("packedVolume が各アイテムの体積合計と一致する", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(new packer.Wrapper("箱", 1000, 30, 30, 30, 0));
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 3, new packer.Product("品物", 10, 10, 10));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+
+    for (let i = 0; i < result.size(); i++) {
+      const wrapper = result.at(i) as packer.Wrapper;
+      let expectedVolume = 0;
+      for (let j = 0; j < wrapper.size(); j++) {
+        expectedVolume += (wrapper.at(j) as packer.Wrap).getVolume();
+      }
+      expect(result.fillRates[i].packedVolume).toBeCloseTo(expectedVolume);
+    }
+  });
+
+  it("containableVolume が Wrapper の収容可能体積と一致する", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(new packer.Wrapper("厚箱", 1000, 20, 20, 20, 2));
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 1, new packer.Product("小物", 5, 5, 5));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+
+    for (let i = 0; i < result.size(); i++) {
+      const wrapper = result.at(i) as packer.Wrapper;
+      expect(result.fillRates[i].containableVolume).toBe(wrapper.getContainableVolume());
+    }
+  });
+
+  it("複数種類の Wrapper を使う場合でも fillRates が正しい", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(
+      new packer.Wrapper("大箱", 1000, 40, 40, 15, 0),
+      new packer.Wrapper("中箱", 700, 20, 20, 10, 0),
+      new packer.Wrapper("小箱", 500, 15, 15, 8, 0),
+    );
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 15, new packer.Product("消しゴム", 1, 2, 5));
+    instances.insert(instances.end(), 15, new packer.Product("本", 15, 30, 3));
+    instances.insert(instances.end(), 15, new packer.Product("飲み物", 3, 3, 10));
+    instances.insert(instances.end(), 15, new packer.Product("傘", 5, 5, 20));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+
+    expect(result.fillRates.length).toBe(result.size());
+
+    for (let i = 0; i < result.size(); i++) {
+      const wrapper = result.at(i) as packer.Wrapper;
+      const entry = result.fillRates[i];
+
+      expect(entry.name).toBe(wrapper.getName());
+      expect(entry.packedCount).toBe(wrapper.size());
+      expect(entry.fillRate).toBeGreaterThan(0);
+      expect(entry.fillRate).toBeLessThanOrEqual(1);
+    }
+  });
+
+  /**
+   * fillRate の数値正確性を検証する。
+   *
+   * 箱:   300 x 100 x 200 (W x H x D) → 体積 6,000,000
+   * 商品A: 200 x  30 x 100             → 体積   600,000
+   * 商品B: 300 x  20 x 100             → 体積   600,000
+   * 商品C:  50 x  10 x 300             → 体積   150,000
+   *                              合計体積 1,350,000
+   *
+   * 期待充填率 = 1,350,000 / 6,000,000 = 0.225
+   */
+  it("通常モード: 充填率の数値が正確である", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(new packer.Wrapper("箱", 1000, 300, 100, 200, 0));
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 1, new packer.Product("商品A", 200, 30, 100));
+    instances.insert(instances.end(), 1, new packer.Product("商品B", 300, 20, 100));
+    instances.insert(instances.end(), 1, new packer.Product("商品C", 50, 10, 300));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+
+    // 全商品が 1 箱に収まる
+    expect(result.size()).toBe(1);
+    expect((result.at(0) as packer.Wrapper).size()).toBe(3);
+
+    const entry = result.fillRates[0];
+    expect(entry.name).toBe("箱");
+    expect(entry.packedCount).toBe(3);
+    expect(entry.packedVolume).toBe(1_350_000);
+    expect(entry.containableVolume).toBe(6_000_000);
+    expect(entry.fillRate).toBeCloseTo(0.225, 10);
+  });
+
+  /**
+   * 安定モードでは安定性制約により 2 箱に分かれる。
+   *
+   * 箱1: 商品B (600,000) + 商品C (150,000) = 750,000
+   *   充填率 = 750,000 / 6,000,000 = 0.125
+   * 箱2: 商品A (600,000)
+   *   充填率 = 600,000 / 6,000,000 = 0.1
+   *
+   * 全箱の合計体積は通常モードと同じ 1,350,000。
+   */
+  it("安定モード: 充填率の数値が正確である", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(new packer.Wrapper("箱", 1000, 300, 100, 200, 0, true));
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 1, new packer.Product("商品A", 200, 30, 100));
+    instances.insert(instances.end(), 1, new packer.Product("商品B", 300, 20, 100));
+    instances.insert(instances.end(), 1, new packer.Product("商品C", 50, 10, 300));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+
+    // 安定性制約により 2 箱に分かれる
+    expect(result.size()).toBe(2);
+    for (let i = 0; i < result.size(); i++) {
+      expect((result.at(i) as packer.Wrapper).getStableMode()).toBe(true);
+    }
+
+    // 全商品が梱包されている
+    let totalPacked = 0;
+    let totalPackedVolume = 0;
+    for (let i = 0; i < result.size(); i++) {
+      totalPacked += result.fillRates[i].packedCount;
+      totalPackedVolume += result.fillRates[i].packedVolume;
+    }
+    expect(totalPacked).toBe(3);
+    expect(totalPackedVolume).toBe(1_350_000);
+
+    // 各箱の containableVolume は同一
+    for (const entry of result.fillRates) {
+      expect(entry.name).toBe("箱");
+      expect(entry.containableVolume).toBe(6_000_000);
+    }
+
+    // 箱1: 商品B + 商品C → 充填率 0.125
+    expect(result.fillRates[0].packedVolume).toBe(750_000);
+    expect(result.fillRates[0].packedCount).toBe(2);
+    expect(result.fillRates[0].fillRate).toBeCloseTo(0.125, 10);
+
+    // 箱2: 商品A → 充填率 0.1
+    expect(result.fillRates[1].packedVolume).toBe(600_000);
+    expect(result.fillRates[1].packedCount).toBe(1);
+    expect(result.fillRates[1].fillRate).toBeCloseTo(0.1, 10);
+  });
+});

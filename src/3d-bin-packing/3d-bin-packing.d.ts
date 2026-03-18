@@ -576,6 +576,13 @@ declare namespace bws.packer {
     }
 }
 declare namespace bws.packer {
+    interface FillRateEntry {
+        name: string;
+        fillRate: number;
+        packedVolume: number;
+        containableVolume: number;
+        packedCount: number;
+    }
     class WrapperArray extends protocol.EntityArrayCollection<Wrapper> {
         /**
          * Default Constructor.
@@ -589,6 +596,10 @@ declare namespace bws.packer {
          * Get (calculate) utilization rate.
          */
         getUtilization(): number;
+        /**
+         * Fill rates per wrapper, populated after optimize().
+         */
+        fillRates: FillRateEntry[];
     }
 }
 declare namespace bws.packer {
@@ -914,6 +925,10 @@ declare namespace bws.packer {
          */
         protected orientation: number;
         /**
+         * Support ratio of the wrapped instance (0.0 to 1.0).
+         */
+        protected supportRatio: number;
+        /**
          * Construct from a Wrapper.
          *
          * @param wrapper A wrapper who will contain an instance.
@@ -998,6 +1013,14 @@ declare namespace bws.packer {
          * Get orientation.
          */
         getOrientation(): number;
+        /**
+         * Get support ratio.
+         */
+        getSupportRatio(): number;
+        /**
+         * Set support ratio.
+         */
+        setSupportRatio(ratio: number): void;
         /**
          * Get width.
          */

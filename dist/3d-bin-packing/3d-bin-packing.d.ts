@@ -576,6 +576,13 @@ declare namespace bws.packer {
     }
 }
 declare namespace bws.packer {
+    interface FillRateEntry {
+        name: string;
+        fillRate: number;
+        packedVolume: number;
+        containableVolume: number;
+        packedCount: number;
+    }
     class WrapperArray extends protocol.EntityArrayCollection<Wrapper> {
         /**
          * Default Constructor.
@@ -589,6 +596,10 @@ declare namespace bws.packer {
          * Get (calculate) utilization rate.
          */
         getUtilization(): number;
+        /**
+         * Fill rates per wrapper, populated after optimize().
+         */
+        fillRates: FillRateEntry[];
     }
 }
 declare namespace bws.packer {
@@ -914,6 +925,10 @@ declare namespace bws.packer {
          */
         protected orientation: number;
         /**
+         * Support ratio of the wrapped instance (0.0 to 1.0).
+         */
+        protected supportRatio: number;
+        /**
          * Construct from a Wrapper.
          *
          * @param wrapper A wrapper who will contain an instance.
@@ -998,6 +1013,14 @@ declare namespace bws.packer {
          * Get orientation.
          */
         getOrientation(): number;
+        /**
+         * Get support ratio.
+         */
+        getSupportRatio(): number;
+        /**
+         * Set support ratio.
+         */
+        setSupportRatio(ratio: number): void;
         /**
          * Get width.
          */
@@ -1349,6 +1372,27 @@ declare namespace bws.packer {
          */
         private pack(instanceArray);
     }
+
+    /**
+     * <p> Shared utility function to calculate support ratio. </p>
+     *
+     * <p> The support ratio is the percentage of a box's bottom face that is supported by boxes below it.
+     * This is used by both check_stability (during packing) and external validators (e.g., test code). </p>
+     *
+     * @param x X coordinate of the proposed placement
+     * @param z Z coordinate of the proposed placement
+     * @param width Width (X-dimension) of the box
+     * @param length Length (Z-dimension) of the box
+     * @param supportingBoxes Array of supporting box objects {x1, x2, z1, z2}
+     * @return support ratio (0.0 to 1.0)
+     */
+    function calculateSupportRatio(
+        x: number,
+        z: number,
+        width: number,
+        length: number,
+        supportingBoxes: Array<{ x1: number; x2: number; z1: number; z2: number }>
+    ): number;
 }
 
 import _packer = bws.packer;

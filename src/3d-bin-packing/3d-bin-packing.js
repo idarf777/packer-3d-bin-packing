@@ -349,6 +349,24 @@ var boxologic;
                     wrap.estimateOrientation(box.layout_width, box.layout_height, box.layout_length);
                     if (this.wrapper.getThickness() != 0)
                         wrap.setPosition(wrap.getX() + this.wrapper.getThickness(), wrap.getY() + this.wrapper.getThickness(), wrap.getZ() + this.wrapper.getThickness());
+                    // Calculate support ratio for this wrap
+                    var supportingBoxes = [];
+                    var wrapY = wrap.getY();
+                    for (var j = 0; j < this.wrapper.size(); j++) {
+                        var existingWrap = this.wrapper.at(j);
+                        var lowerTop = existingWrap.getY() + existingWrap.getLayoutHeight();
+                        // Check if the existing wrap is directly below this wrap (within 0.01 tolerance)
+                        if (Math.abs(lowerTop - wrapY) < 0.01) {
+                            supportingBoxes.push({
+                                x1: existingWrap.getX(),
+                                x2: existingWrap.getX() + existingWrap.getLayoutWidth(),
+                                z1: existingWrap.getZ(),
+                                z2: existingWrap.getZ() + existingWrap.getLength()
+                            });
+                        }
+                    }
+                    var supportRatio = calculateSupportRatio(wrap.getX(), wrap.getZ(), wrap.getLayoutWidth(), wrap.getLength(), supportingBoxes);
+                    wrap.setSupportRatio(supportRatio);
                     this.wrapper.push_back(wrap);
                 }
                 else {
@@ -2187,6 +2205,23 @@ var bws;
                 }
                 if (wrappers.empty() == true)
                     throw new std.LogicError("All instances are greater than the wrapper.");
+                // CALCULATE FILL RATES PER WRAPPER
+                var fillRates = [];
+                for (var i = 0; i < wrappers.size(); i++) {
+                    var wrapper = wrappers.at(i);
+                    var packedVolume = 0.0;
+                    for (var j = 0; j < wrapper.size(); j++)
+                        packedVolume += wrapper.at(j).getVolume();
+                    var containableVolume = wrapper.getContainableVolume();
+                    fillRates.push({
+                        name: wrapper.getName(),
+                        fillRate: containableVolume > 0 ? packedVolume / containableVolume : 0,
+                        packedVolume: packedVolume,
+                        containableVolume: containableVolume,
+                        packedCount: wrapper.size()
+                    });
+                }
+                wrappers.fillRates = fillRates;
                 return wrappers;
             };
             /**
@@ -2502,6 +2537,7 @@ var bws;
                 _this.y = y;
                 _this.z = z;
                 _this.orientation = orientation;
+                _this.supportRatio = 0.0;
                 return _this;
             }
             /* ===========================================================
@@ -2653,6 +2689,18 @@ var bws;
              */
             Wrap.prototype.getOrientation = function () {
                 return this.orientation;
+            };
+            /**
+             * Get support ratio.
+             */
+            Wrap.prototype.getSupportRatio = function () {
+                return this.supportRatio;
+            };
+            /**
+             * Set support ratio.
+             */
+            Wrap.prototype.setSupportRatio = function (ratio) {
+                this.supportRatio = ratio;
             };
             /**
              * Get width.

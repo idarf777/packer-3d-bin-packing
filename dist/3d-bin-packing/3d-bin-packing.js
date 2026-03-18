@@ -231,6 +231,37 @@ var boxologic;
  * @author Bill Knechtel, <br>
  *		   Migrated and Refactored by Jeongho Nam <http://samchon.org>
  */
+/**
+ * <p> Shared utility function to calculate support ratio. </p>
+ * <p> The support ratio is the percentage of a box's bottom face that is supported by boxes below it. </p>
+ * <p> Used by both check_stability (during packing) and external validators (e.g., test code). </p>
+ *
+ * @param x X coordinate of the proposed placement
+ * @param z Z coordinate of the proposed placement
+ * @param width Width (X-dimension) of the box
+ * @param length Length (Z-dimension) of the box
+ * @param supportingBoxes Array of supporting box objects {x1, x2, z1, z2}
+ * @return support ratio (0.0 to 1.0)
+ */
+var calculateSupportRatio = function (x, z, width, length, supportingBoxes) {
+    var totalSupportArea = 0;
+    var newBoxArea = width * length;
+    var new_x1 = x;
+    var new_x2 = x + width;
+    var new_z1 = z;
+    var new_z2 = z + length;
+    for (var k = 0; k < supportingBoxes.length; k++) {
+        var support = supportingBoxes[k];
+        var overlap_x1 = Math.max(new_x1, support.x1);
+        var overlap_x2 = Math.min(new_x2, support.x2);
+        var overlap_z1 = Math.max(new_z1, support.z1);
+        var overlap_z2 = Math.min(new_z2, support.z2);
+        if (overlap_x1 < overlap_x2 && overlap_z1 < overlap_z2) {
+            totalSupportArea += (overlap_x2 - overlap_x1) * (overlap_z2 - overlap_z1);
+        }
+    }
+    return newBoxArea > 0 ? totalSupportArea / newBoxArea : 0;
+};
 var boxologic;
 (function (boxologic) {
     /**
@@ -321,6 +352,24 @@ var boxologic;
                     wrap.estimateOrientation(box.layout_width, box.layout_height, box.layout_length);
                     if (this.wrapper.getThickness() != 0)
                         wrap.setPosition(wrap.getX() + this.wrapper.getThickness(), wrap.getY() + this.wrapper.getThickness(), wrap.getZ() + this.wrapper.getThickness());
+                    // Calculate support ratio for this wrap
+                    var supportingBoxes = [];
+                    var wrapY = wrap.getY();
+                    for (var j = 0; j < this.wrapper.size(); j++) {
+                        var existingWrap = this.wrapper.at(j);
+                        var lowerTop = existingWrap.getY() + existingWrap.getLayoutHeight();
+                        // Check if the existing wrap is directly below this wrap (within 0.01 tolerance)
+                        if (Math.abs(lowerTop - wrapY) < 0.01) {
+                            supportingBoxes.push({
+                                x1: existingWrap.getX(),
+                                x2: existingWrap.getX() + existingWrap.getLayoutWidth(),
+                                z1: existingWrap.getZ(),
+                                z2: existingWrap.getZ() + existingWrap.getLength()
+                            });
+                        }
+                    }
+                    var supportRatio = calculateSupportRatio(wrap.getX(), wrap.getZ(), wrap.getLayoutWidth(), wrap.getLength(), supportingBoxes);
+                    wrap.setSupportRatio(supportRatio);
                     this.wrapper.push_back(wrap);
                 }
                 else {
@@ -467,6 +516,7 @@ var boxologic;
          */
         Boxologic.prototype.iterate_layer = function (thickness) {
             // ENHANCED GREEDY: Use beam search to avoid local optima
+            // Beam search now supports stable mode with integrated stability checks
             if (this.enhancedGreedyWithBeamSearch()) {
                 return; // Use enhanced greedy algorithm
             }
@@ -522,10 +572,6 @@ var boxologic;
         Boxologic.prototype.enhancedGreedyWithBeamSearch = function () {
             var beamWidth = 3; // Number of candidates to explore simultaneously
             var candidates = [];
-            // Reset all boxes to unpacked before simulation
-            // (previous orientation iterations may have left boxes in packed state)
-            for (var i = 0; i < this.box_array.size(); i++)
-                this.box_array.at(i).is_packed = false;
             // Generate multiple initial placement candidates
             var layerIdx = 0;
             for (var it = this.layer_map.begin(); !it.equals(this.layer_map.end()) && layerIdx < beamWidth; it = it.next(), layerIdx++) {
@@ -539,14 +585,18 @@ var boxologic;
                 return false; // No valid candidates, use standard algorithm
             }
             // Select best candidate based on multiple criteria
+            var self = this;
             var bestCandidate = candidates.reduce(function (best, current) {
-                // Multi-criteria scoring: packed count + space efficiency + orientation preference
+                // Multi-criteria scoring: packed count + space efficiency + orientation preference + stability
+                var stabilityWeight = self.stableMode ? 200 : 0;
                 var currentScore = current.totalPacked * 1000 +
                     current.spaceEfficiency * 100 +
-                    current.orientationBonus;
+                    current.orientationBonus +
+                    (current.stabilityScore || 0) * stabilityWeight;
                 var bestScore = best.totalPacked * 1000 +
                     best.spaceEfficiency * 100 +
-                    best.orientationBonus;
+                    best.orientationBonus +
+                    (best.stabilityScore || 0) * stabilityWeight;
                 return currentScore > bestScore ? current : best;
             });
             // Apply the best candidate solution
@@ -578,14 +628,21 @@ var boxologic;
             this.layer_thickness = layerThickness;
             this.remain_layout_height = this.pallet.layout_height;
             this.remain_layout_length = this.pallet.layout_length;
+            // Unpack all boxes for fresh simulation
+            for (var ui = 0; ui < this.box_array.size(); ui++)
+                this.box_array.at(ui).is_packed = false;
             var totalPacked = 0;
             var orientationBonus = 0;
+            var stabilityScore = 0;
+            var totalPlacements = 0;
             // Simplified packing simulation (basic layer filling)
             while (this.remain_layout_height >= this.layer_thickness) {
-                var layerPacked = this.simulateLayerPacking();
-                if (layerPacked === 0)
+                var layerResult = this.simulateLayerPacking();
+                if (layerResult.packed === 0)
                     break;
-                totalPacked += layerPacked;
+                totalPacked += layerResult.packed;
+                stabilityScore += layerResult.stablePlacements;
+                totalPlacements += layerResult.packed;
                 this.remain_layout_height -= this.layer_thickness;
             }
             // Calculate space efficiency and orientation preferences
@@ -605,6 +662,7 @@ var boxologic;
                 totalPacked: totalPacked,
                 spaceEfficiency: spaceEfficiency,
                 orientationBonus: orientationBonus,
+                stabilityScore: totalPlacements > 0 ? stabilityScore / totalPlacements : 0,
                 boxStates: []
             };
             // Store final box states for this candidate
@@ -639,13 +697,31 @@ var boxologic;
          */
         Boxologic.prototype.simulateLayerPacking = function () {
             var packedInLayer = 0;
+            var stablePlacements = 0;
             var currentX = 0;
             var currentZ = 0;
-            while (currentX < this.pallet.layout_width && currentZ < this.pallet.layout_length) {
+            while (currentX < this.pallet.layout_width && currentZ < this.remain_layout_length) {
                 var bestBox = this.findBestBoxForPosition(currentX, currentZ);
                 if (!bestBox)
                     break;
-                // Place the box (standard coords: cox=X, coy=Y stacking, coz=Z depth)
+                // In stable mode, verify stability before placing
+                if (this.stableMode) {
+                    var isStable = this.check_stability(currentX, currentZ, bestBox.width, bestBox.length, this.packed_layout_height);
+                    if (!isStable) {
+                        // Try advancing past this position without placing
+                        currentX += 1;
+                        if (currentX >= this.pallet.layout_width) {
+                            currentX = 0;
+                            currentZ += 1;
+                        }
+                        continue;
+                    }
+                    stablePlacements++;
+                }
+                else {
+                    stablePlacements++;
+                }
+                // Place the box (X-Z plane, Y = current layer height)
                 bestBox.box.cox = currentX;
                 bestBox.box.coy = this.packed_layout_height;
                 bestBox.box.coz = currentZ;
@@ -655,7 +731,7 @@ var boxologic;
                 bestBox.box.is_packed = true;
                 this.packed_volume += bestBox.box.volume;
                 packedInLayer++;
-                // Update position for next box (fill X first, then advance Z)
+                // Advance in X, then wrap to next Z row
                 currentX += bestBox.width;
                 if (currentX >= this.pallet.layout_width) {
                     currentX = 0;
@@ -663,22 +739,15 @@ var boxologic;
                 }
             }
             this.packed_layout_height += this.layer_thickness;
-            return packedInLayer;
+            return { packed: packedInLayer, stablePlacements: stablePlacements };
         };
         /**
          * <p> Find the best box that fits at the given position </p>
-         *
-         * <p> Coordinate convention (matching standard algorithm): </p>
-         * <ul>
-         *   <li> orient.width  → X dimension (pallet width) </li>
-         *   <li> orient.height → Y dimension (layer thickness / stacking) </li>
-         *   <li> orient.length → Z dimension (pallet length / depth) </li>
-         * </ul>
          */
         Boxologic.prototype.findBestBoxForPosition = function (x, z) {
-            var availableWidth = this.pallet.layout_width - x; // X remaining
-            var availableLength = this.pallet.layout_length - z; // Z remaining
-            var availableHeight = this.layer_thickness; // Y (layer thickness)
+            var availableWidth = this.pallet.layout_width - x; // X direction
+            var availableLength = this.remain_layout_length - z; // Z direction
+            var availableHeight = this.layer_thickness; // Y direction (layer thickness)
             var bestFit = null;
             var bestScore = -1;
             for (var i = 0; i < this.box_array.size(); i++) {
@@ -689,14 +758,10 @@ var boxologic;
                 var orientations = this.getValidOrientations(box);
                 for (var j = 0; j < orientations.length; j++) {
                     var orient = orientations[j];
+                    // width -> X, height -> Y (layer), length -> Z
                     if (orient.width <= availableWidth &&
                         orient.height <= availableHeight &&
                         orient.length <= availableLength) {
-                        // Stability check for beam search path
-                        if (this.stableMode &&
-                            !this.check_stability(x, z, orient.width, orient.length, this.packed_layout_height)) {
-                            continue; // Skip unstable placement
-                        }
                         // Calculate fit score (prefer tight fits)
                         var score = 100 - (availableWidth - orient.width) - (availableLength - orient.length);
                         // Bonus for preferred Y-axis orientations
@@ -730,16 +795,13 @@ var boxologic;
                     orientations.push({ width: w, height: h, length: l });
                 }
             }
-            if (box.rotationMode === "none") {
-                // No rotation allowed
-                addOrientation(box.width, box.height, box.length);
-            }
-            else if (box.rotationMode === "yAxis") {
+            // Original orientation
+            addOrientation(box.width, box.height, box.length);
+            if (box.rotationMode === "yAxis") {
                 // Y-axis rotation: height stays fixed, swap width and length
-                addOrientation(box.width, box.height, box.length);
                 addOrientation(box.length, box.height, box.width);
             }
-            else {
+            else if (box.rotationMode === "all") {
                 // All 6 permutations of (width, height, length)
                 var w = box.width, h = box.height, l = box.length;
                 addOrientation(w, h, l);
@@ -1238,6 +1300,12 @@ var boxologic;
             }
         };
         /**
+         * <p> Instance method that delegates to the shared calculateSupportRatio function. </p>
+         */
+        Boxologic.prototype.calculateSupportRatio = function (x, z, width, length, supportingBoxes) {
+            return calculateSupportRatio(x, z, width, length, supportingBoxes);
+        };
+        /**
          * <p> Check stability of a box placement in stable mode. </p>
          *
          * <p> In stable mode, a minimum percentage of a product's X-Z face must be supported by products below it
@@ -1263,7 +1331,6 @@ var boxologic;
             var new_z2 = z + length;
             // Find all boxes that could potentially support this box
             var supportingBoxes = [];
-            var hasAdequateSupport = false;
             for (var i = 0; i < this.box_array.size(); i++) {
                 var box = this.box_array.at(i);
                 if (!box.is_packed) {
@@ -1273,7 +1340,6 @@ var boxologic;
                 var box_x2 = box.cox + box.layout_width;
                 var box_z1 = box.coz;
                 var box_z2 = box.coz + box.layout_length;
-                var box_y1 = box.coy;
                 var box_y2 = box.coy + box.layout_height;
                 // Check if this box is below the proposed position
                 if (box_y2 <= y + 0.01 && box_y2 >= y - 0.01) {
@@ -1285,34 +1351,17 @@ var boxologic;
                             x1: box_x1, x2: box_x2,
                             z1: box_z1, z2: box_z2
                         });
-                        // Mark that we have some support (will check percentage later)
-                        hasAdequateSupport = true;
                     }
                 }
             }
-            // In stable mode, we need at least some supporting boxes with adequate coverage
-            if (!hasAdequateSupport && y > 0.01) {
+            // In stable mode, we need at least some supporting boxes
+            if (supportingBoxes.length === 0 && y > 0.01) {
                 return false;
             }
-            // ENHANCED STABILITY: Check if the new box has sufficient support area
-            if (y > 0.01) {
-                var totalSupportArea = 0;
-                var new_box_area = width * length;
-                for (var k = 0; k < supportingBoxes.length; k++) {
-                    var support = supportingBoxes[k];
-                    var overlap_x1 = Math.max(new_x1, support.x1);
-                    var overlap_x2 = Math.min(new_x2, support.x2);
-                    var overlap_z1 = Math.max(new_z1, support.z1);
-                    var overlap_z2 = Math.min(new_z2, support.z2);
-                    if (overlap_x1 < overlap_x2 && overlap_z1 < overlap_z2) {
-                        totalSupportArea += (overlap_x2 - overlap_x1) * (overlap_z2 - overlap_z1);
-                    }
-                }
-                // Require minimum support area ratio in stable mode
-                var supportRatio = totalSupportArea / new_box_area;
-                if (supportRatio < MIN_SUPPORT_RATIO) {
-                    return false; // Insufficient support area
-                }
+            // Use shared utility function to calculate support ratio
+            var supportRatio = this.calculateSupportRatio(x, z, width, length, supportingBoxes);
+            if (supportRatio < MIN_SUPPORT_RATIO) {
+                return false; // Insufficient support area
             }
             return true; // Stable placement
         };
@@ -2118,6 +2167,23 @@ var bws;
                 }
                 if (wrappers.empty() == true)
                     throw new tstl_1.default.LogicError("All instances are greater than the wrapper.");
+                // CALCULATE FILL RATES PER WRAPPER
+                var fillRates = [];
+                for (var i = 0; i < wrappers.size(); i++) {
+                    var wrapper = wrappers.at(i);
+                    var packedVolume = 0.0;
+                    for (var j = 0; j < wrapper.size(); j++)
+                        packedVolume += wrapper.at(j).getVolume();
+                    var containableVolume = wrapper.getContainableVolume();
+                    fillRates.push({
+                        name: wrapper.getName(),
+                        fillRate: containableVolume > 0 ? packedVolume / containableVolume : 0,
+                        packedVolume: packedVolume,
+                        containableVolume: containableVolume,
+                        packedCount: wrapper.size()
+                    });
+                }
+                wrappers.fillRates = fillRates;
                 return wrappers;
             };
             /**
@@ -2451,6 +2517,7 @@ var bws;
                 _this.y = y;
                 _this.z = z;
                 _this.orientation = orientation;
+                _this.supportRatio = 0.0;
                 return _this;
             }
             /* ===========================================================
@@ -2602,6 +2669,18 @@ var bws;
              */
             Wrap.prototype.getOrientation = function () {
                 return this.orientation;
+            };
+            /**
+             * Get support ratio.
+             */
+            Wrap.prototype.getSupportRatio = function () {
+                return this.supportRatio;
+            };
+            /**
+             * Set support ratio.
+             */
+            Wrap.prototype.setSupportRatio = function (ratio) {
+                this.supportRatio = ratio;
             };
             /**
              * Get width.
@@ -3169,6 +3248,11 @@ var bws;
             return resultPair.second;
         };
         packer.WrapperGroup = WrapperGroup;
+        /**
+         * <p> Public API: Calculates the support ratio for a box at a given position. </p>
+         * <p> Used by external validators (e.g., test code) to verify stability constraints. </p>
+         */
+        packer.calculateSupportRatio = calculateSupportRatio;
     })(packer = bws.packer || (bws.packer = {}));
 })(bws || (bws = {}));
 exports.default = bws.packer;

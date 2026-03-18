@@ -192,7 +192,7 @@ describe("底面70%サポートルール検証", () => {
       instances.insert(
         instances.end(),
         1,
-        new packer.Product(`品_${String.fromCharCode(65 + idx)}`, s, 6, s),
+        new packer.Product(`品_${String.fromCharCode(65 + idx)}`, s, 6, Math.floor(s * 0.75)),
       );
     });
 
@@ -233,12 +233,12 @@ describe("底面70%サポートルール検証", () => {
     wrappers.push(new packer.Wrapper("安定3段箱", 1000, 30, 50, 30, 0, true));
 
     const instances = new packer.InstanceArray();
-    // 1 段目: 28×6×28 を 1 個（底面をほぼ覆う大きな基盤）
-    instances.insert(instances.end(), 1, new packer.Product("基盤", 28, 6, 28));
-    // 2 段目: 18×6×18 を 4 個（基盤の上に並ぶ中型品、基盤に完全サポートされる）
-    instances.insert(instances.end(), 4, new packer.Product("中型", 18, 6, 18));
-    // 3 段目: 10×6×10 を 5 個（中型品の上に載る小型品、中型品に完全サポートされる）
-    instances.insert(instances.end(), 5, new packer.Product("小型", 10, 6, 10));
+    // 1 段目: 28×6×22 を 1 個（底面をほぼ覆う大きな基盤）
+    instances.insert(instances.end(), 1, new packer.Product("基盤", 28, 6, 22));
+    // 2 段目: 18×6×14 を 4 個（基盤の上に並ぶ中型品、基盤に完全サポートされる）
+    instances.insert(instances.end(), 4, new packer.Product("中型", 18, 6, 14));
+    // 3 段目: 10×6×8 を 5 個（中型品の上に載る小型品、中型品に完全サポートされる）
+    instances.insert(instances.end(), 5, new packer.Product("小型", 10, 6, 8));
 
     const result = new packer.Packer(wrappers, instances).optimize();
     expect(result.size()).toBeGreaterThan(0);
@@ -282,16 +282,16 @@ describe("底面70%サポートルール検証", () => {
     // 各 product の高さは 8 で統一、XZ サイズのみ変化
     // 大きい順に積まれることで下の品が上の品を支える
     const productDefs = [
-      { name: "P1", w: 28, l: 28 },
-      { name: "P2", w: 26, l: 26 },
-      { name: "P3", w: 24, l: 24 },
-      { name: "P4", w: 22, l: 22 },
-      { name: "P5", w: 20, l: 20 },
-      { name: "P6", w: 18, l: 18 },
-      { name: "P7", w: 16, l: 16 },
-      { name: "P8", w: 14, l: 14 },
-      { name: "P9", w: 12, l: 12 },
-      { name: "P10", w: 10, l: 10 },
+      { name: "P1", w: 28, l: 22 },
+      { name: "P2", w: 26, l: 20 },
+      { name: "P3", w: 24, l: 18 },
+      { name: "P4", w: 22, l: 17 },
+      { name: "P5", w: 20, l: 15 },
+      { name: "P6", w: 18, l: 14 },
+      { name: "P7", w: 16, l: 12 },
+      { name: "P8", w: 14, l: 11 },
+      { name: "P9", w: 12, l: 9 },
+      { name: "P10", w: 10, l: 8 },
     ];
     productDefs.forEach(({ name, w, l }) => {
       instances.insert(instances.end(), 1, new packer.Product(name, w, 8, l));
@@ -645,10 +645,14 @@ describe("安定モードのサポート率 100%未満ケース検証", () => {
         supportingBoxes,
       );
 
+      // getSupportRatio() で取得した値と比較して等価性を確認
+      const storedRatio = upper.getSupportRatio();
+      expect(storedRatio).toBeCloseTo(ratio, 5); // 小数点以下5桁まで一致を確認
+
       console.log(
         `  ${upper.getInstance().getName()}` +
           `(x=${upper.getX().toFixed(1)}, y=${upperY.toFixed(1)}, z=${upper.getZ().toFixed(1)}) ` +
-          `サポート率 ${(ratio * 100).toFixed(1)}%`,
+          `サポート率 ${(ratio * 100).toFixed(1)}% (stored: ${(storedRatio * 100).toFixed(1)}%)`,
       );
 
       if (ratio < 1.0 - 0.001) {
@@ -726,10 +730,14 @@ describe("安定モードのサポート率 100%未満ケース検証", () => {
         supportingBoxes,
       );
 
+      // getSupportRatio() で取得した値と比較して等価性を確認
+      const storedRatio = upper.getSupportRatio();
+      expect(storedRatio).toBeCloseTo(ratio, 5);
+
       console.log(
         `  ${upper.getInstance().getName()}` +
           `(x=${upper.getX().toFixed(1)}, y=${upperY.toFixed(1)}, z=${upper.getZ().toFixed(1)}) ` +
-          `サポート率 ${(ratio * 100).toFixed(1)}%`,
+          `サポート率 ${(ratio * 100).toFixed(1)}% (stored: ${(storedRatio * 100).toFixed(1)}%)`,
       );
 
       if (ratio < 1.0 - 0.001) {
@@ -806,10 +814,14 @@ describe("安定モードのサポート率 100%未満ケース検証", () => {
         supportingBoxes,
       );
 
+      // getSupportRatio() で取得した値と比較して等価性を確認
+      const storedRatio = upper.getSupportRatio();
+      expect(storedRatio).toBeCloseTo(ratio, 5);
+
       console.log(
         `  ${upper.getInstance().getName()}` +
           `(x=${upper.getX().toFixed(1)}, y=${upperY.toFixed(1)}, z=${upper.getZ().toFixed(1)}) ` +
-          `サポート率 ${(ratio * 100).toFixed(1)}%`,
+          `サポート率 ${(ratio * 100).toFixed(1)}% (stored: ${(storedRatio * 100).toFixed(1)}%)`,
       );
 
       if (ratio < 1.0 - 0.001) {
