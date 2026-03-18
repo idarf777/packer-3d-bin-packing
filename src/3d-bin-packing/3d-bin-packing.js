@@ -495,6 +495,7 @@ var boxologic;
          */
         Boxologic.prototype.iterate_layer = function (thickness) {
             // ENHANCED GREEDY: Use beam search to avoid local optima
+            // Beam search now supports stable mode with integrated stability checks
             if (this.enhancedGreedyWithBeamSearch()) {
                 return; // Use enhanced greedy algorithm
             }
@@ -552,11 +553,6 @@ var boxologic;
             var beamWidth = 3; // Number of candidates to explore simultaneously
             var candidates = [];
 
-            // Reset all boxes to unpacked before simulation
-            // (previous orientation iterations may have left boxes in packed state)
-            for (var i = 0; i < this.box_array.size(); i++)
-                this.box_array.at(i).is_packed = false;
-
             // Generate multiple initial placement candidates
             var layerIdx = 0;
             for (var it = this.layer_map.begin(); !it.equals(this.layer_map.end()) && layerIdx < beamWidth; it = it.next(), layerIdx++) {
@@ -572,14 +568,18 @@ var boxologic;
             }
 
             // Select best candidate based on multiple criteria
+            var self = this;
             var bestCandidate = candidates.reduce(function(best, current) {
-                // Multi-criteria scoring: packed count + space efficiency + orientation preference
+                // Multi-criteria scoring: packed count + space efficiency + orientation preference + stability
+                var stabilityWeight = self.stableMode ? 200 : 0;
                 var currentScore = current.totalPacked * 1000 +
                                    current.spaceEfficiency * 100 +
-                                   current.orientationBonus;
+                                   current.orientationBonus +
+                                   (current.stabilityScore || 0) * stabilityWeight;
                 var bestScore = best.totalPacked * 1000 +
                                best.spaceEfficiency * 100 +
-                               best.orientationBonus;
+                               best.orientationBonus +
+                               (best.stabilityScore || 0) * stabilityWeight;
                 return currentScore > bestScore ? current : best;
             });
 
@@ -615,14 +615,22 @@ var boxologic;
             this.remain_layout_height = this.pallet.layout_height;
             this.remain_layout_length = this.pallet.layout_length;
 
+            // Unpack all boxes for fresh simulation
+            for (var ui = 0; ui < this.box_array.size(); ui++)
+                this.box_array.at(ui).is_packed = false;
+
             var totalPacked = 0;
             var orientationBonus = 0;
+            var stabilityScore = 0;
+            var totalPlacements = 0;
 
             // Simplified packing simulation (basic layer filling)
             while (this.remain_layout_height >= this.layer_thickness) {
-                var layerPacked = this.simulateLayerPacking();
-                if (layerPacked === 0) break;
-                totalPacked += layerPacked;
+                var layerResult = this.simulateLayerPacking();
+                if (layerResult.packed === 0) break;
+                totalPacked += layerResult.packed;
+                stabilityScore += layerResult.stablePlacements;
+                totalPlacements += layerResult.packed;
                 this.remain_layout_height -= this.layer_thickness;
             }
 
@@ -645,6 +653,7 @@ var boxologic;
                 totalPacked: totalPacked,
                 spaceEfficiency: spaceEfficiency,
                 orientationBonus: orientationBonus,
+                stabilityScore: totalPlacements > 0 ? stabilityScore / totalPlacements : 0,
                 boxStates: []
             };
 
@@ -683,14 +692,36 @@ var boxologic;
          */
         Boxologic.prototype.simulateLayerPacking = function () {
             var packedInLayer = 0;
+            var stablePlacements = 0;
             var currentX = 0;
             var currentZ = 0;
 
-            while (currentX < this.pallet.layout_width && currentZ < this.pallet.layout_length) {
+            while (currentX < this.pallet.layout_width && currentZ < this.remain_layout_length) {
                 var bestBox = this.findBestBoxForPosition(currentX, currentZ);
                 if (!bestBox) break;
 
-                // Place the box (standard coords: cox=X, coy=Y stacking, coz=Z depth)
+                // In stable mode, verify stability before placing
+                if (this.stableMode) {
+                    var isStable = this.check_stability(
+                        currentX, currentZ,
+                        bestBox.width, bestBox.length,
+                        this.packed_layout_height
+                    );
+                    if (!isStable) {
+                        // Try advancing past this position without placing
+                        currentX += 1;
+                        if (currentX >= this.pallet.layout_width) {
+                            currentX = 0;
+                            currentZ += 1;
+                        }
+                        continue;
+                    }
+                    stablePlacements++;
+                } else {
+                    stablePlacements++;
+                }
+
+                // Place the box (X-Z plane, Y = current layer height)
                 bestBox.box.cox = currentX;
                 bestBox.box.coy = this.packed_layout_height;
                 bestBox.box.coz = currentZ;
@@ -702,7 +733,7 @@ var boxologic;
                 this.packed_volume += bestBox.box.volume;
                 packedInLayer++;
 
-                // Update position for next box (fill X first, then advance Z)
+                // Advance in X, then wrap to next Z row
                 currentX += bestBox.width;
                 if (currentX >= this.pallet.layout_width) {
                     currentX = 0;
@@ -711,23 +742,16 @@ var boxologic;
             }
 
             this.packed_layout_height += this.layer_thickness;
-            return packedInLayer;
+            return { packed: packedInLayer, stablePlacements: stablePlacements };
         };
 
         /**
          * <p> Find the best box that fits at the given position </p>
-         *
-         * <p> Coordinate convention (matching standard algorithm): </p>
-         * <ul>
-         *   <li> orient.width  → X dimension (pallet width) </li>
-         *   <li> orient.height → Y dimension (layer thickness / stacking) </li>
-         *   <li> orient.length → Z dimension (pallet length / depth) </li>
-         * </ul>
          */
         Boxologic.prototype.findBestBoxForPosition = function (x, z) {
-            var availableWidth = this.pallet.layout_width - x;    // X remaining
-            var availableLength = this.pallet.layout_length - z;  // Z remaining
-            var availableHeight = this.layer_thickness;            // Y (layer thickness)
+            var availableWidth = this.pallet.layout_width - x;   // X direction
+            var availableLength = this.remain_layout_length - z;  // Z direction
+            var availableHeight = this.layer_thickness;            // Y direction (layer thickness)
 
             var bestFit = null;
             var bestScore = -1;
@@ -741,15 +765,10 @@ var boxologic;
 
                 for (var j = 0; j < orientations.length; j++) {
                     var orient = orientations[j];
+                    // width -> X, height -> Y (layer), length -> Z
                     if (orient.width <= availableWidth &&
                         orient.height <= availableHeight &&
                         orient.length <= availableLength) {
-
-                        // Stability check for beam search path
-                        if (this.stableMode &&
-                            !this.check_stability(x, z, orient.width, orient.length, this.packed_layout_height)) {
-                            continue; // Skip unstable placement
-                        }
 
                         // Calculate fit score (prefer tight fits)
                         var score = 100 - (availableWidth - orient.width) - (availableLength - orient.length);
@@ -790,14 +809,13 @@ var boxologic;
                 }
             }
 
-            if (box.rotationMode === "none") {
-                // No rotation allowed
-                addOrientation(box.width, box.height, box.length);
-            } else if (box.rotationMode === "yAxis") {
+            // Original orientation
+            addOrientation(box.width, box.height, box.length);
+
+            if (box.rotationMode === "yAxis") {
                 // Y-axis rotation: height stays fixed, swap width and length
-                addOrientation(box.width, box.height, box.length);
                 addOrientation(box.length, box.height, box.width);
-            } else {
+            } else if (box.rotationMode === "all") {
                 // All 6 permutations of (width, height, length)
                 var w = box.width, h = box.height, l = box.length;
                 addOrientation(w, h, l);
