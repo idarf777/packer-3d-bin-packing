@@ -220,6 +220,42 @@ var boxologic;
  * @author Bill Knechtel, <br>
  *		   Migrated and Refactored by Jeongho Nam <http://samchon.org>
  */
+    /**
+     * <p> Shared utility function to calculate support ratio. </p>
+     * <p> The support ratio is the percentage of a box's bottom face that is supported by boxes below it. </p>
+     * <p> Used by both check_stability (during packing) and external validators (e.g., test code). </p>
+     *
+     * @param x X coordinate of the proposed placement
+     * @param z Z coordinate of the proposed placement
+     * @param width Width (X-dimension) of the box
+     * @param length Length (Z-dimension) of the box
+     * @param supportingBoxes Array of supporting box objects {x1, x2, z1, z2}
+     * @return support ratio (0.0 to 1.0)
+     */
+    var calculateSupportRatio = function(x, z, width, length, supportingBoxes) {
+        var totalSupportArea = 0;
+        var newBoxArea = width * length;
+
+        var new_x1 = x;
+        var new_x2 = x + width;
+        var new_z1 = z;
+        var new_z2 = z + length;
+
+        for (var k = 0; k < supportingBoxes.length; k++) {
+            var support = supportingBoxes[k];
+            var overlap_x1 = Math.max(new_x1, support.x1);
+            var overlap_x2 = Math.min(new_x2, support.x2);
+            var overlap_z1 = Math.max(new_z1, support.z1);
+            var overlap_z2 = Math.min(new_z2, support.z2);
+
+            if (overlap_x1 < overlap_x2 && overlap_z1 < overlap_z2) {
+                totalSupportArea += (overlap_x2 - overlap_x1) * (overlap_z2 - overlap_z1);
+            }
+        }
+
+        return newBoxArea > 0 ? totalSupportArea / newBoxArea : 0;
+    };
+
 var boxologic;
 (function (boxologic) {
     /**
@@ -234,6 +270,7 @@ var boxologic;
      * @author Bill Knechtel, <br>
      *		   Migrated and Refactored by Jeongho Nam <http://samchon.org>
      */
+
     var Boxologic = (function () {
         /* ===========================================================
             CONSTRUCTORS
@@ -1263,6 +1300,15 @@ var boxologic;
                 this.analyze_box(i, hmx, hy, hmy, hz, hmz, box.length, box.height, box.width);
             }
         };
+
+        /**
+         * <p> Instance method that delegates to the shared calculateSupportRatio function. </p>
+         */
+        Boxologic.prototype.calculateSupportRatio = function (
+            x, z, width, length, supportingBoxes) {
+            return calculateSupportRatio(x, z, width, length, supportingBoxes);
+        };
+
         /**
          * <p> Check stability of a box placement in stable mode. </p>
          *
@@ -1292,7 +1338,6 @@ var boxologic;
 
             // Find all boxes that could potentially support this box
             var supportingBoxes = [];
-            var hasAdequateSupport = false;
 
             for (var i = 0; i < this.box_array.size(); i++) {
                 var box = this.box_array.at(i);
@@ -1304,7 +1349,6 @@ var boxologic;
                 var box_x2 = box.cox + box.layout_width;
                 var box_z1 = box.coz;
                 var box_z2 = box.coz + box.layout_length;
-                var box_y1 = box.coy;
                 var box_y2 = box.coy + box.layout_height;
 
                 // Check if this box is below the proposed position
@@ -1318,42 +1362,20 @@ var boxologic;
                             x1: box_x1, x2: box_x2,
                             z1: box_z1, z2: box_z2
                         });
-
-                        // Mark that we have some support (will check percentage later)
-                        hasAdequateSupport = true;
                     }
                 }
             }
 
-            // In stable mode, we need at least some supporting boxes with adequate coverage
-            if (!hasAdequateSupport && y > 0.01) {
+            // In stable mode, we need at least some supporting boxes
+            if (supportingBoxes.length === 0 && y > 0.01) {
                 return false;
             }
 
-            // ENHANCED STABILITY: Check if the new box has sufficient support area
-            if (y > 0.01) {
-                var totalSupportArea = 0;
-                var new_box_area = width * length;
-
-                for (var k = 0; k < supportingBoxes.length; k++) {
-                    var support = supportingBoxes[k];
-                    var overlap_x1 = Math.max(new_x1, support.x1);
-                    var overlap_x2 = Math.min(new_x2, support.x2);
-                    var overlap_z1 = Math.max(new_z1, support.z1);
-                    var overlap_z2 = Math.min(new_z2, support.z2);
-
-                    if (overlap_x1 < overlap_x2 && overlap_z1 < overlap_z2) {
-                        totalSupportArea += (overlap_x2 - overlap_x1) * (overlap_z2 - overlap_z1);
-                    }
-                }
-
-                // Require minimum support area ratio in stable mode
-                var supportRatio = totalSupportArea / new_box_area;
-                if (supportRatio < MIN_SUPPORT_RATIO) {
-                    return false; // Insufficient support area
-                }
+            // Use shared utility function to calculate support ratio
+            var supportRatio = this.calculateSupportRatio(x, z, width, length, supportingBoxes);
+            if (supportRatio < MIN_SUPPORT_RATIO) {
+                return false; // Insufficient support area
             }
-
 
             return true; // Stable placement
         };
@@ -3178,6 +3200,12 @@ var bws;
                 return resultPair.second;
             };
         packer.WrapperGroup = WrapperGroup;
+
+        /**
+         * <p> Public API: Calculates the support ratio for a box at a given position. </p>
+         * <p> Used by external validators (e.g., test code) to verify stability constraints. </p>
+         */
+        packer.calculateSupportRatio = calculateSupportRatio;
     })(packer = bws.packer || (bws.packer = {}));
 })(bws || (bws = {}));
 

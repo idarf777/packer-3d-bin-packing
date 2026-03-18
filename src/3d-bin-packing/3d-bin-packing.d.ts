@@ -1349,6 +1349,27 @@ declare namespace bws.packer {
          */
         private pack(instanceArray);
     }
+
+    /**
+     * <p> Shared utility function to calculate support ratio. </p>
+     *
+     * <p> The support ratio is the percentage of a box's bottom face that is supported by boxes below it.
+     * This is used by both check_stability (during packing) and external validators (e.g., test code). </p>
+     *
+     * @param x X coordinate of the proposed placement
+     * @param z Z coordinate of the proposed placement
+     * @param width Width (X-dimension) of the box
+     * @param length Length (Z-dimension) of the box
+     * @param supportingBoxes Array of supporting box objects {x1, x2, z1, z2}
+     * @return support ratio (0.0 to 1.0)
+     */
+    function calculateSupportRatio(
+        x: number,
+        z: number,
+        width: number,
+        length: number,
+        supportingBoxes: Array<{ x1: number; x2: number; z1: number; z2: number }>
+    ): number;
 }
 
 import _packer = bws.packer;
