@@ -11,9 +11,10 @@
   ],
   "scripts": {
     "build": "tsc && copyfiles -u 1 src/3d-bin-packing/3d-bin-packing.d.ts dist",
-    "demo": "ts-node -P tsconfig.demo.json demo/index.ts",
+    "demo": "bun run demo/index.ts",
+    "demo2": "bun run demo/y-axis-rotation.ts",
     "test": "jest",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "bun run build"
   },
   "keywords": [
     "3d",
