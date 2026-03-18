@@ -608,6 +608,15 @@ describe("安定モードのサポート率 100%未満ケース検証", () => {
     // Y > 0 の各アイテムについてサポート率を算出し、100%未満のものがあることを確認
     wraps.sort((a, b) => a.getY() - b.getY());
 
+    console.log("\n=== 70x20x200 x1 + 100x20x150 x1 の梱包配置 ===");
+    wraps.forEach((wrap, idx) => {
+      console.log(
+        `  ${idx}: ${wrap.getInstance().getName()}` +
+          `(${wrap.getLayoutWidth()}×${wrap.getLayoutHeight()}×${wrap.getLength()})` +
+          ` @ (${wrap.getX().toFixed(1)}, ${wrap.getY().toFixed(1)}, ${wrap.getZ().toFixed(1)})`,
+      );
+    });
+
     const ratiosBelow100: Array<{ name: string; ratio: number }> = [];
 
     for (const upper of wraps) {
@@ -634,6 +643,12 @@ describe("安定モードのサポート率 100%未満ケース検証", () => {
         upper.getLayoutWidth(),
         upper.getLength(),
         supportingBoxes,
+      );
+
+      console.log(
+        `  ${upper.getInstance().getName()}` +
+          `(x=${upper.getX().toFixed(1)}, y=${upperY.toFixed(1)}, z=${upper.getZ().toFixed(1)}) ` +
+          `サポート率 ${(ratio * 100).toFixed(1)}%`,
       );
 
       if (ratio < 1.0 - 0.001) {
@@ -674,6 +689,15 @@ describe("安定モードのサポート率 100%未満ケース検証", () => {
 
     wraps.sort((a, b) => a.getY() - b.getY());
 
+    console.log("\n=== 70x20x200 x2 + 100x20x150 x1 の梱包配置 ===");
+    wraps.forEach((wrap, idx) => {
+      console.log(
+        `  ${idx}: ${wrap.getInstance().getName()}` +
+          `(${wrap.getLayoutWidth()}×${wrap.getLayoutHeight()}×${wrap.getLength()})` +
+          ` @ (${wrap.getX().toFixed(1)}, ${wrap.getY().toFixed(1)}, ${wrap.getZ().toFixed(1)})`,
+      );
+    });
+
     const ratiosBelow100: Array<{ name: string; ratio: number }> = [];
 
     for (const upper of wraps) {
@@ -700,6 +724,12 @@ describe("安定モードのサポート率 100%未満ケース検証", () => {
         upper.getLayoutWidth(),
         upper.getLength(),
         supportingBoxes,
+      );
+
+      console.log(
+        `  ${upper.getInstance().getName()}` +
+          `(x=${upper.getX().toFixed(1)}, y=${upperY.toFixed(1)}, z=${upper.getZ().toFixed(1)}) ` +
+          `サポート率 ${(ratio * 100).toFixed(1)}%`,
       );
 
       if (ratio < 1.0 - 0.001) {
@@ -739,6 +769,15 @@ describe("安定モードのサポート率 100%未満ケース検証", () => {
 
     wraps.sort((a, b) => a.getY() - b.getY());
 
+    console.log("\n=== 70x20x200 x1 + 100x20x150 x2 の梱包配置 ===");
+    wraps.forEach((wrap, idx) => {
+      console.log(
+        `  ${idx}: ${wrap.getInstance().getName()}` +
+          `(${wrap.getLayoutWidth()}×${wrap.getLayoutHeight()}×${wrap.getLength()})` +
+          ` @ (${wrap.getX().toFixed(1)}, ${wrap.getY().toFixed(1)}, ${wrap.getZ().toFixed(1)})`,
+      );
+    });
+
     const ratiosBelow100: Array<{ name: string; ratio: number }> = [];
 
     for (const upper of wraps) {
@@ -765,6 +804,12 @@ describe("安定モードのサポート率 100%未満ケース検証", () => {
         upper.getLayoutWidth(),
         upper.getLength(),
         supportingBoxes,
+      );
+
+      console.log(
+        `  ${upper.getInstance().getName()}` +
+          `(x=${upper.getX().toFixed(1)}, y=${upperY.toFixed(1)}, z=${upper.getZ().toFixed(1)}) ` +
+          `サポート率 ${(ratio * 100).toFixed(1)}%`,
       );
 
       if (ratio < 1.0 - 0.001) {
