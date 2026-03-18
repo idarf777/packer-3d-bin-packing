@@ -142,3 +142,4 @@ vite.config.ts.timestamp-*
 # AI
 .claude
 .serena
+.mcp.json

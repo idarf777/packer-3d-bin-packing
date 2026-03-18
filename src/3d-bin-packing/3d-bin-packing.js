@@ -285,10 +285,12 @@ var boxologic;
          * @param wrapper A Wrapper to pack instances.
          * @param instanceArray Instances trying to put into the wrapper.
          */
-        function Boxologic(wrapper, instanceArray) {
+        function Boxologic(wrapper, instanceArray, options) {
+            if (options === void 0) { options = { isNotUseBeamSearch: false }; }
             this.wrapper = wrapper;
             this.instanceArray = instanceArray;
             this.leftInstances = new bws.packer.InstanceArray();
+            this.options = options;
         }
         /* -----------------------------------------------------------
             ENCODER & DECODER
@@ -340,7 +342,6 @@ var boxologic;
         Boxologic.prototype.decode = function () {
             this.wrapper.clear();
             this.leftInstances.clear();
-            this.inspect_validity();
             for (var i = 0; i < this.box_array.size(); i++) {
                 var instance = this.instanceArray.at(i);
                 var box = this.box_array.at(i);
@@ -374,61 +375,6 @@ var boxologic;
                     this.leftInstances.push_back(instance);
                 }
             }
-        };
-        Boxologic.prototype.inspect_validity = function () {
-            //let boxes: std.Vector<Box> = new std.Vector<Box>(); // CANDIDATES TO BE PACKED
-            //for (let i: number = 0; i < this.box_array.size(); i++)
-            //{
-            //	let box: Box = this.box_array.at(i);
-            //	if (box.is_packed == false)
-            //		continue;
-            //	if (box.cox < 0 || box.cox + box.layout_width > this.pallet.layout_width ||
-            //		box.coy < 0 || box.coy + box.layout_height > this.pallet.layout_height ||
-            //		box.coz < 0 || box.coz + box.layout_length > this.pallet.layout_length)
-            //	{
-            //		// NOT PAKCED OR BE PLACED OUT OF THE PALLET
-            //		box.is_packed = false;
-            //		continue;
-            //	}
-            //	boxes.push(box);
-            //}
-            //// FIND OVERLAPS
-            //let is_overlapped: boolean = false;
-            //for (let i: number = 0; i < boxes.size(); i++)
-            //	for (let j: number = 0; j < boxes.size(); j++)
-            //		if (i == j)
-            //			continue;
-            //		else if (boxes[i].hit_test(boxes[j]))
-            //		{
-            //			is_overlapped = true;
-            //			boxes[i].overlapped_boxes.insert(boxes[j]);
-            //			boxes[j].overlapped_boxes.insert(boxes[i]);
-            //		}
-            //if (is_overlapped == false)
-            //	return;
-            //// SORT OVERLAPS
-            //for (let i: number = 0; i < 2; i++)
-            //	std.sort(boxes.begin(), boxes.end(),
-            //		function (x: Box, y: Box): boolean
-            //		{
-            //			if (x.overlapped_boxes.size() == y.overlapped_boxes.size())
-            //				return x.volume > y.volume;
-            //			else
-            //				return x.overlapped_boxes.size() > y.overlapped_boxes.size();
-            //		}
-            //	);
-            //for (let i: number = 0; i < boxes.size(); i++)
-            //	if (boxes[i].overlapped_boxes.empty() == true)
-            //		continue;
-            //	else
-            //	{
-            //		// ERASE FROM NEIGHBORS
-            //		let overlapped_boxes = boxes[i].overlapped_boxes;
-            //		for (let it = overlapped_boxes.begin(); !it.equals(overlapped_boxes.end()); it = it.next())
-            //			boxes[i].overlapped_boxes.erase(boxes[i]);
-            //		// ERASE FROM PALLET
-            //		boxes[i].is_packed = false;
-            //	}
         };
         /* ===========================================================
             MAIN PROCEDURES
@@ -514,7 +460,7 @@ var boxologic;
         Boxologic.prototype.iterate_layer = function (thickness) {
             // ENHANCED GREEDY: Use beam search to avoid local optima
             // Beam search now supports stable mode with integrated stability checks
-            if (this.enhancedGreedyWithBeamSearch()) {
+            if (!this.options.isNotUseBeamSearch && this.enhancedGreedyWithBeamSearch()) {
                 return; // Use enhanced greedy algorithm
             }
 
@@ -2026,6 +1972,7 @@ var bws;
                     var wrapper = this.at(i);
                     if (this.result.has(wrapper.getName()) == false) {
                         var wrapperGroup_1 = new packer.WrapperGroup(wrapper);
+                        wrapperGroup_1.options = this.options;
                         this.result.set(wrapper.getName(), wrapperGroup_1);
                     }
                     var wrapperGroup = this.result.get(wrapper.getName());
@@ -2121,9 +2068,10 @@ var bws;
          */
         var Packer = (function (_super) {
             __extends(Packer, _super);
-            function Packer(wrapperArray, instanceArray) {
+            function Packer(wrapperArray, instanceArray, options) {
                 if (wrapperArray === void 0) { wrapperArray = null; }
                 if (instanceArray === void 0) { instanceArray = null; }
+                if (options === void 0) { options = { isNotUseBeamSearch: false }; }
                 var _this = _super.call(this) || this;
                 if (wrapperArray == null && instanceArray == null) {
                     _this.wrapperArray = new packer.WrapperArray();
@@ -2133,6 +2081,7 @@ var bws;
                     _this.wrapperArray = wrapperArray;
                     _this.instanceArray = instanceArray;
                 }
+                _this.options = options;
                 return _this;
             }
             /* -----------------------------------------------------------
@@ -2165,6 +2114,7 @@ var bws;
                     // ONLY A TYPE OF WRAPPER EXISTS,
                     // OPTMIZE IN LEVEL OF WRAPPER_GROUP AND TERMINATE THE OPTIMIZATION
                     var wrapperGroup = new packer.WrapperGroup(this.wrapperArray.front());
+                    wrapperGroup.options = this.options;
                     for (var i = 0; i < this.instanceArray.size(); i++)
                         if (wrapperGroup.allocate(this.instanceArray.at(i)) == false)
                             throw new std.LogicError("All instances are greater than the wrapper.");
@@ -2257,7 +2207,9 @@ var bws;
                 var wrapperGroups = new std.Vector();
                 for (var i = 0; i < this.wrapperArray.size(); i++) {
                     var wrapper = this.wrapperArray.at(i);
-                    wrapperGroups.push_back(new packer.WrapperGroup(wrapper));
+                    var wg = new packer.WrapperGroup(wrapper);
+                    wg.options = this.options;
+                    wrapperGroups.push_back(wg);
                 }
                 // ALLOCATE INSTNACES BY AUTHORITY
                 for (var i = 0; i < this.instanceArray.size(); i++) {
@@ -2306,6 +2258,7 @@ var bws;
                 }
                 // GENE_ARRAY
                 var geneArray = new packer.GAWrapperArray(ga_instances);
+                geneArray.options = this.options;
                 geneArray.assign(genes.begin(), genes.end());
                 return geneArray;
             };
@@ -2320,6 +2273,7 @@ var bws;
                 for (var i = 0; i < $wrappers.size(); i++) {
                     var wrapper = $wrappers.at(i);
                     var minGroup = new packer.WrapperGroup(wrapper);
+                    minGroup.options = this.options;
                     minGroup.push_back(wrapper);
                     for (var j = 0; j < this.wrapperArray.size(); j++) {
                         var myWrapper = this.wrapperArray.at(j);
@@ -2328,6 +2282,7 @@ var bws;
                         var valid = true;
                         // CONSTRUCT GROUP OF TARGET
                         var myGroup = new packer.WrapperGroup(myWrapper);
+                        myGroup.options = this.options;
                         for (var k = 0; k < wrapper.size(); k++)
                             if (myGroup.allocate(wrapper.at(k).getInstance()) == false) {
                                 // IF THERE'S AN INSTANCE CANNOT CONTAIN BY ITS GREATER SIZE
@@ -3260,7 +3215,7 @@ var bws;
              * @see boxologic
              */
             WrapperGroup.prototype.pack = function (instanceArray) {
-                var boxo = new boxologic.Boxologic(new packer.Wrapper(this.sample), instanceArray);
+                var boxo = new boxologic.Boxologic(new packer.Wrapper(this.sample), instanceArray, this.options);
                 var resultPair = boxo.pack();
                 this.push_back(resultPair.first);
                 return resultPair.second;
