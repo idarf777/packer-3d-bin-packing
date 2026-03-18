@@ -571,3 +571,214 @@ describe("validateStabilityConstraints 関数の検証", () => {
     }
   });
 });
+
+// =============================================
+// 4. 安定モードのサポート率が100%未満になるケースの検証
+//
+// 100x60x200 の wrapper に 70x20x200 と 100x20x150 の product を
+// 入れると、上に載る product のサポート率が100%未満になることを確認する。
+// =============================================
+
+describe("安定モードのサポート率 100%未満ケース検証", () => {
+  it("70x20x200 と 100x20x150 を 100x60x200 の wrapper に入れるとサポート率 < 100% のアイテムが存在する", () => {
+    const wrappers = new packer.WrapperArray();
+    // Wrapper: W=100, H=60, D=200, thickness=0, stableMode=true
+    wrappers.push_back(new packer.Wrapper("安定テスト箱", 1000, 100, 60, 200, 0, true));
+
+    const instances = new packer.InstanceArray();
+    // Product 1: W=70, H=20, D=200
+    instances.insert(instances.end(), 1, new packer.Product("product-70x20x200", 70, 20, 200));
+    // Product 2: W=100, H=20, D=150
+    instances.insert(instances.end(), 1, new packer.Product("product-100x20x150", 100, 20, 150));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+    expect(result.size()).toBe(1);
+
+    const wrapper = result.at(0) as packer.Wrapper;
+
+    // 梱包されたアイテムを取得
+    const wraps: packer.Wrap[] = [];
+    for (let i = 0; i < wrapper.size(); i++) {
+      wraps.push(wrapper.at(i) as packer.Wrap);
+    }
+
+    // 2つの product が梱包されていることを確認
+    expect(wraps.length).toBe(2);
+
+    // Y > 0 の各アイテムについてサポート率を算出し、100%未満のものがあることを確認
+    wraps.sort((a, b) => a.getY() - b.getY());
+
+    const ratiosBelow100: Array<{ name: string; ratio: number }> = [];
+
+    for (const upper of wraps) {
+      const upperY = upper.getY();
+      if (upperY < 0.01) continue; // 底面は検査対象外
+
+      const supportingBoxes: Array<{ x1: number; x2: number; z1: number; z2: number }> = [];
+      for (const lower of wraps) {
+        if (lower === upper) continue;
+        const lowerTop = lower.getY() + lower.getLayoutHeight();
+        if (Math.abs(lowerTop - upperY) >= 0.01) continue;
+
+        supportingBoxes.push({
+          x1: lower.getX(),
+          x2: lower.getX() + lower.getLayoutWidth(),
+          z1: lower.getZ(),
+          z2: lower.getZ() + lower.getLength(),
+        });
+      }
+
+      const ratio = packer.calculateSupportRatio(
+        upper.getX(),
+        upper.getZ(),
+        upper.getLayoutWidth(),
+        upper.getLength(),
+        supportingBoxes,
+      );
+
+      if (ratio < 1.0 - 0.001) {
+        ratiosBelow100.push({
+          name: upper.getInstance().getName(),
+          ratio,
+        });
+      }
+    }
+
+    // サポート率が100%未満のアイテムが少なくとも1つ存在する
+    expect(ratiosBelow100.length).toBeGreaterThanOrEqual(1);
+    for (const item of ratiosBelow100) {
+      expect(item.ratio).toBeLessThan(1.0);
+      expect(item.ratio).toBeGreaterThanOrEqual(0.7); // 安定モードの最低サポート率は70%
+    }
+  });
+
+  it("70x20x200 x2 と 100x20x150 x1 を 100x60x200 の wrapper に入れるとサポート率 < 100% のアイテムが存在する", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push_back(new packer.Wrapper("安定テスト箱", 1000, 100, 60, 200, 0, true));
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 2, new packer.Product("product-70x20x200", 70, 20, 200));
+    instances.insert(instances.end(), 1, new packer.Product("product-100x20x150", 100, 20, 150));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+    expect(result.size()).toBe(1);
+
+    const wrapper = result.at(0) as packer.Wrapper;
+
+    const wraps: packer.Wrap[] = [];
+    for (let i = 0; i < wrapper.size(); i++) {
+      wraps.push(wrapper.at(i) as packer.Wrap);
+    }
+
+    expect(wraps.length).toBe(3);
+
+    wraps.sort((a, b) => a.getY() - b.getY());
+
+    const ratiosBelow100: Array<{ name: string; ratio: number }> = [];
+
+    for (const upper of wraps) {
+      const upperY = upper.getY();
+      if (upperY < 0.01) continue;
+
+      const supportingBoxes: Array<{ x1: number; x2: number; z1: number; z2: number }> = [];
+      for (const lower of wraps) {
+        if (lower === upper) continue;
+        const lowerTop = lower.getY() + lower.getLayoutHeight();
+        if (Math.abs(lowerTop - upperY) >= 0.01) continue;
+
+        supportingBoxes.push({
+          x1: lower.getX(),
+          x2: lower.getX() + lower.getLayoutWidth(),
+          z1: lower.getZ(),
+          z2: lower.getZ() + lower.getLength(),
+        });
+      }
+
+      const ratio = packer.calculateSupportRatio(
+        upper.getX(),
+        upper.getZ(),
+        upper.getLayoutWidth(),
+        upper.getLength(),
+        supportingBoxes,
+      );
+
+      if (ratio < 1.0 - 0.001) {
+        ratiosBelow100.push({
+          name: upper.getInstance().getName(),
+          ratio,
+        });
+      }
+    }
+
+    expect(ratiosBelow100.length).toBeGreaterThanOrEqual(1);
+    for (const item of ratiosBelow100) {
+      expect(item.ratio).toBeLessThan(1.0);
+      expect(item.ratio).toBeGreaterThanOrEqual(0.7);
+    }
+  });
+
+  it("70x20x200 x1 と 100x20x150 x2 を 100x60x200 の wrapper に入れるとサポート率 < 100% のアイテムが存在する", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push_back(new packer.Wrapper("安定テスト箱", 1000, 100, 60, 200, 0, true));
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 1, new packer.Product("product-70x20x200", 70, 20, 200));
+    instances.insert(instances.end(), 2, new packer.Product("product-100x20x150", 100, 20, 150));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+    expect(result.size()).toBe(1);
+
+    const wrapper = result.at(0) as packer.Wrapper;
+
+    const wraps: packer.Wrap[] = [];
+    for (let i = 0; i < wrapper.size(); i++) {
+      wraps.push(wrapper.at(i) as packer.Wrap);
+    }
+
+    expect(wraps.length).toBe(3);
+
+    wraps.sort((a, b) => a.getY() - b.getY());
+
+    const ratiosBelow100: Array<{ name: string; ratio: number }> = [];
+
+    for (const upper of wraps) {
+      const upperY = upper.getY();
+      if (upperY < 0.01) continue;
+
+      const supportingBoxes: Array<{ x1: number; x2: number; z1: number; z2: number }> = [];
+      for (const lower of wraps) {
+        if (lower === upper) continue;
+        const lowerTop = lower.getY() + lower.getLayoutHeight();
+        if (Math.abs(lowerTop - upperY) >= 0.01) continue;
+
+        supportingBoxes.push({
+          x1: lower.getX(),
+          x2: lower.getX() + lower.getLayoutWidth(),
+          z1: lower.getZ(),
+          z2: lower.getZ() + lower.getLength(),
+        });
+      }
+
+      const ratio = packer.calculateSupportRatio(
+        upper.getX(),
+        upper.getZ(),
+        upper.getLayoutWidth(),
+        upper.getLength(),
+        supportingBoxes,
+      );
+
+      if (ratio < 1.0 - 0.001) {
+        ratiosBelow100.push({
+          name: upper.getInstance().getName(),
+          ratio,
+        });
+      }
+    }
+
+    expect(ratiosBelow100.length).toBeGreaterThanOrEqual(1);
+    for (const item of ratiosBelow100) {
+      expect(item.ratio).toBeLessThan(1.0);
+      expect(item.ratio).toBeGreaterThanOrEqual(0.7);
+    }
+  });
+});
