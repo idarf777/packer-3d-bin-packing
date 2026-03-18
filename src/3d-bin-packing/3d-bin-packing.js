@@ -13,66 +13,109 @@ var bws;
         // Minimal stub implementations replacing samchon.protocol entity classes
         var __proto__ = {};
         (function (protocol) {
-            // -----------------------------------------------------------
-            // Minimal event-emitter mixin (addEventListener / erase events)
-            // -----------------------------------------------------------
-            function _applyEventMixin(Ctor, SuperCtor) {
-                Ctor.prototype.addEventListener = function (type, listener, thisArg) {
-                    if (!this._listeners) this._listeners = {};
-                    if (!this._listeners[type]) this._listeners[type] = [];
-                    this._listeners[type].push({ listener: listener, thisArg: thisArg });
-                };
-                Ctor.prototype.removeEventListener = function (type, listener, thisArg) {
-                    if (!this._listeners || !this._listeners[type]) return;
-                    this._listeners[type] = this._listeners[type].filter(function (e) {
-                        return e.listener !== listener || e.thisArg !== thisArg;
-                    });
-                };
-                Ctor.prototype._dispatchEvent = function (type, event) {
-                    if (!this._listeners || !this._listeners[type]) return;
-                    var entries = this._listeners[type].slice();
-                    for (var i = 0; i < entries.length; i++)
-                        entries[i].listener.call(entries[i].thisArg, event);
-                };
-                // Override push_back to emit "insert"
-                var _orig_push_back = SuperCtor.prototype.push_back;
-                Ctor.prototype.push_back = function (val) {
-                    var ret = _orig_push_back.call(this, val);
-                    this._dispatchEvent("insert", { first: this.end().prev(), last: this.end() });
-                    return ret;
-                };
-                // Override erase to emit "erase"
-                var _orig_erase = SuperCtor.prototype.erase;
-                Ctor.prototype.erase = function (first, last) {
-                    var ret = _orig_erase.call(this, first, last);
-                    this._dispatchEvent("erase", { first: first, last: last !== undefined ? last : first });
-                    return ret;
-                };
-            }
             // Entity: plain base class
-            var Entity = function () {};
-            Entity.prototype.key = function () { return ""; };
+            class Entity {
+                key() { return ""; }
+            }
             protocol.Entity = Entity;
             // EntityArray: extends std.Vector + event emitter
             class EntityArray extends std.Vector {
                 constructor() { super(); this._listeners = null; }
                 key() { return ""; }
+                addEventListener(type, listener, thisArg) {
+                    if (!this._listeners) this._listeners = {};
+                    if (!this._listeners[type]) this._listeners[type] = [];
+                    this._listeners[type].push({ listener: listener, thisArg: thisArg });
+                }
+                removeEventListener(type, listener, thisArg) {
+                    if (!this._listeners || !this._listeners[type]) return;
+                    this._listeners[type] = this._listeners[type].filter(function (e) {
+                        return e.listener !== listener || e.thisArg !== thisArg;
+                    });
+                }
+                _dispatchEvent(type, event) {
+                    if (!this._listeners || !this._listeners[type]) return;
+                    var entries = this._listeners[type].slice();
+                    for (var i = 0; i < entries.length; i++)
+                        entries[i].listener.call(entries[i].thisArg, event);
+                }
+                push_back(val) {
+                    var ret = super.push_back(val);
+                    this._dispatchEvent("insert", { first: this.end().prev(), last: this.end() });
+                    return ret;
+                }
+                erase(first, last) {
+                    var ret = super.erase(first, last);
+                    this._dispatchEvent("erase", { first: first, last: last !== undefined ? last : first });
+                    return ret;
+                }
             }
-            _applyEventMixin(EntityArray, std.Vector);
             protocol.EntityArray = EntityArray;
             // EntityArrayCollection: extends std.Vector + event emitter
             class EntityArrayCollection extends std.Vector {
                 constructor() { super(); this._listeners = null; }
                 key() { return ""; }
+                addEventListener(type, listener, thisArg) {
+                    if (!this._listeners) this._listeners = {};
+                    if (!this._listeners[type]) this._listeners[type] = [];
+                    this._listeners[type].push({ listener: listener, thisArg: thisArg });
+                }
+                removeEventListener(type, listener, thisArg) {
+                    if (!this._listeners || !this._listeners[type]) return;
+                    this._listeners[type] = this._listeners[type].filter(function (e) {
+                        return e.listener !== listener || e.thisArg !== thisArg;
+                    });
+                }
+                _dispatchEvent(type, event) {
+                    if (!this._listeners || !this._listeners[type]) return;
+                    var entries = this._listeners[type].slice();
+                    for (var i = 0; i < entries.length; i++)
+                        entries[i].listener.call(entries[i].thisArg, event);
+                }
+                push_back(val) {
+                    var ret = super.push_back(val);
+                    this._dispatchEvent("insert", { first: this.end().prev(), last: this.end() });
+                    return ret;
+                }
+                erase(first, last) {
+                    var ret = super.erase(first, last);
+                    this._dispatchEvent("erase", { first: first, last: last !== undefined ? last : first });
+                    return ret;
+                }
             }
-            _applyEventMixin(EntityArrayCollection, std.Vector);
             protocol.EntityArrayCollection = EntityArrayCollection;
             // EntityDeque: extends std.Deque + event emitter
             class EntityDeque extends std.Deque {
                 constructor() { super(); this._listeners = null; }
                 key() { return ""; }
+                addEventListener(type, listener, thisArg) {
+                    if (!this._listeners) this._listeners = {};
+                    if (!this._listeners[type]) this._listeners[type] = [];
+                    this._listeners[type].push({ listener: listener, thisArg: thisArg });
+                }
+                removeEventListener(type, listener, thisArg) {
+                    if (!this._listeners || !this._listeners[type]) return;
+                    this._listeners[type] = this._listeners[type].filter(function (e) {
+                        return e.listener !== listener || e.thisArg !== thisArg;
+                    });
+                }
+                _dispatchEvent(type, event) {
+                    if (!this._listeners || !this._listeners[type]) return;
+                    var entries = this._listeners[type].slice();
+                    for (var i = 0; i < entries.length; i++)
+                        entries[i].listener.call(entries[i].thisArg, event);
+                }
+                push_back(val) {
+                    var ret = super.push_back(val);
+                    this._dispatchEvent("insert", { first: this.end().prev(), last: this.end() });
+                    return ret;
+                }
+                erase(first, last) {
+                    var ret = super.erase(first, last);
+                    this._dispatchEvent("erase", { first: first, last: last !== undefined ? last : first });
+                    return ret;
+                }
             }
-            _applyEventMixin(EntityDeque, std.Deque);
             protocol.EntityDeque = EntityDeque;
         })(__proto__);
         packer.library = {};
@@ -117,7 +160,6 @@ try {
     eval("module.exports = bws.packer");
 }
 catch (exception) { }
-/// <reference path="../bws/packer/API.ts" />
 var boxologic;
 (function (boxologic) {
     /**
@@ -127,10 +169,7 @@ var boxologic;
      *
      * @author Jeongho Nam <http://samchon.org>
      */
-    var Instance = (function () {
-        /* -----------------------------------------------------------
-            CONSTRUCTORS
-        ----------------------------------------------------------- */
+    class Instance {
         /**
          * Construct from size members.
          *
@@ -138,7 +177,7 @@ var boxologic;
          * @param height Height, length on the Y-axis in 3D.
          * @param length Length, length on the Z-axis in 3D.
          */
-        function Instance(width, height, length) {
+        constructor(width, height, length) {
             // INIT MEMBERS
             this.width = width;
             this.height = height;
@@ -150,17 +189,9 @@ var boxologic;
             // DERIVED PROPERTY; VOLUME
             this.volume = width * height * length;
         }
-        return Instance;
-    }());
+    }
     boxologic.Instance = Instance;
 })(boxologic || (boxologic = {}));
-/// <reference path="../bws/packer/API.ts" />
-var __extends = (this && this.__extends) || function (d, b) {
-    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
-    function __() { this.constructor = d; }
-    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-};
-/// <reference path="Instance.ts" />
 var boxologic;
 (function (boxologic) {
     /**
@@ -169,28 +200,26 @@ var boxologic;
      * @author Bill Knechtel, <br>
      *		   Migrated and Refactored by Jeongho Nam <http://samchon.org>
      */
-    var Box = (function (_super) {
-        __extends(Box, _super);
+    class Box extends boxologic.Instance {
         /**
          * Construct from an instance.
          *
          * @param instance An instance adapts with.
          */
-        function Box(instance) {
-            var _this = _super.call(this, instance.getWidth(), instance.getHeight(), instance.getLength()) || this;
-            _this.overlapped_boxes = new std.HashSet();
-            _this.cox = 0;
-            _this.coy = 0;
-            _this.coz = 0;
-            _this.is_packed = false;
-            _this.rotationMode = (typeof instance.getRotationMode === 'function') ? instance.getRotationMode() : "all";
-            return _this;
+        constructor(instance) {
+            super(instance.getWidth(), instance.getHeight(), instance.getLength());
+            this.overlapped_boxes = new std.HashSet();
+            this.cox = 0;
+            this.coy = 0;
+            this.coz = 0;
+            this.is_packed = false;
+            this.rotationMode = (typeof instance.getRotationMode === 'function') ? instance.getRotationMode() : "all";
         }
-        Box.prototype.hit_test = function (obj) {
+        hit_test(obj) {
             return (this.cox == obj.cox && this.coy == obj.coy && this.coz == obj.coy)
                 || (this.hit_test_single(obj) == false && obj.hit_test_single(this) == false);
-        };
-        Box.prototype.hit_test_single = function (obj) {
+        }
+        hit_test_single(obj) {
             return this.hit_test_point(obj.cox, obj.coy, obj.coz)
                 || this.hit_test_point(obj.cox + obj.layout_width, obj.coy, obj.coz)
                 || this.hit_test_point(obj.cox, obj.coy + obj.layout_height, obj.coz)
@@ -199,17 +228,15 @@ var boxologic;
                 || this.hit_test_point(obj.cox + obj.layout_width, obj.coy, obj.coz + obj.layout_length)
                 || this.hit_test_point(obj.cox, obj.coy + obj.layout_height, obj.coz + obj.layout_length)
                 || this.hit_test_point(obj.cox + obj.layout_width, obj.coy + obj.layout_height, obj.coz + obj.layout_length);
-        };
-        Box.prototype.hit_test_point = function (x, y, z) {
+        }
+        hit_test_point(x, y, z) {
             return this.cox < x && x < this.cox + this.layout_width
                 && this.coy < y && y < this.coy + this.layout_height
                 && this.coz < z && z < this.coz + this.layout_length;
-        };
-        return Box;
-    }(boxologic.Instance));
+        }
+    }
     boxologic.Box = Box;
 })(boxologic || (boxologic = {}));
-/// <reference path="../bws/packer/API.ts" />
 /**
  * <p> A set of programs that calculate the best fit for boxes on a pallet migrated from language C. </p>
  *
@@ -270,8 +297,7 @@ var boxologic;
      * @author Bill Knechtel, <br>
      *		   Migrated and Refactored by Jeongho Nam <http://samchon.org>
      */
-
-    var Boxologic = (function () {
+    class Boxologic {
         /* ===========================================================
             CONSTRUCTORS
                 - CONSTRUCTOR
@@ -285,7 +311,7 @@ var boxologic;
          * @param wrapper A Wrapper to pack instances.
          * @param instanceArray Instances trying to put into the wrapper.
          */
-        function Boxologic(wrapper, instanceArray, options) {
+        constructor(wrapper, instanceArray, options) {
             if (options === void 0) { options = { isNotUseBeamSearch: false }; }
             this.wrapper = wrapper;
             this.instanceArray = instanceArray;
@@ -301,7 +327,7 @@ var boxologic;
          * <p> Encodes {@link bws.packer Packer}'s data to be suitable for the
          * {@link boxologic Boxologic}'s parametric data. </p>
          */
-        Boxologic.prototype.encode = function () {
+        encode() {
             /////////////////////////////////////
             // STRUCTURES
             /////////////////////////////////////
@@ -333,13 +359,13 @@ var boxologic;
             this.best_solution_volume = 0.0;
             this.packing_best = false;
             this.hundred_percent = false;
-        };
+        }
         /**
          * <p> Decode data </p>
          *
          * <p> Decodes the Boxologic's optimization result data to be suitable for the Packer's own. </p>
          */
-        Boxologic.prototype.decode = function () {
+        decode() {
             this.wrapper.clear();
             this.leftInstances.clear();
             for (var i = 0; i < this.box_array.size(); i++) {
@@ -375,7 +401,7 @@ var boxologic;
                     this.leftInstances.push_back(instance);
                 }
             }
-        };
+        }
         /* ===========================================================
             MAIN PROCEDURES
                 - OPERATORS
@@ -401,19 +427,19 @@ var boxologic;
          * @return A pair of {@link wrapper} with packed instances and
          *		   {@link leftInstances instances failed to pack} by overloading.
          */
-        Boxologic.prototype.pack = function () {
+        pack() {
             this.encode();
             this.iterate_orientations();
             this.report_results();
             this.decode();
             return new std.Pair(this.wrapper, this.leftInstances);
-        };
+        }
         /**
          * <p> Execute iterations by calling proper functions. </p>
          *
          * <p> Iterations are done and parameters of the best solution are found. </p>
          */
-        Boxologic.prototype.iterate_orientations = function () {
+        iterate_orientations() {
             // When any box has yAxis rotation mode, restricting pallet orientations to 1 and 2
             // (only those that keep the pallet's Y axis as the height axis).
             // Orientations 3-6 permute the pallet's Y axis to X or Z, which would violate
@@ -451,13 +477,13 @@ var boxologic;
                 if (this.pallet.width == this.pallet.height && this.pallet.height == this.pallet.length)
                     orientation_1 = maxOrientation; // DON'T ITERATE ALL ORIENTATIONS
             }
-        };
+        }
         /**
          * Iterate a layer.
          *
          * @param thickness Thickness of the iterating layer.
          */
-        Boxologic.prototype.iterate_layer = function (thickness) {
+        iterate_layer(thickness) {
             // ENHANCED GREEDY: Use beam search to avoid local optima
             // Beam search now supports stable mode with integrated stability checks
             if (!this.options.isNotUseBeamSearch && this.enhancedGreedyWithBeamSearch()) {
@@ -504,16 +530,12 @@ var boxologic;
                 // CALL FIND_LAYER
                 this.find_layer(this.remain_layout_height);
             } while (this.packing);
-        };
-        /**
-         * <p> Specialized optimization for Y-axis rotation of 200×130×31 products </p>
-         * <p> Directly calculates and places optimal 130×200×31 arrangement </p>
-         */
+        }
         /**
          * <p> Enhanced greedy algorithm with beam search to avoid local optima </p>
          * <p> Explores multiple placement candidates and selects globally better solutions </p>
          */
-        Boxologic.prototype.enhancedGreedyWithBeamSearch = function () {
+        enhancedGreedyWithBeamSearch() {
             var beamWidth = 3; // Number of candidates to explore simultaneously
             var candidates = [];
 
@@ -550,12 +572,11 @@ var boxologic;
             // Apply the best candidate solution
             this.applyPlacementSolution(bestCandidate);
             return true;
-        };
-
+        }
         /**
          * <p> Simulate placement for a given layer thickness and return metrics </p>
          */
-        Boxologic.prototype.simulatePlacement = function (layerThickness) {
+        simulatePlacement(layerThickness) {
             // Save current state for rollback
             var savedBoxStates = [];
             for (var i = 0; i < this.box_array.size(); i++) {
@@ -649,12 +670,11 @@ var boxologic;
             }
 
             return result;
-        };
-
+        }
         /**
          * <p> Simulate packing for a single layer </p>
          */
-        Boxologic.prototype.simulateLayerPacking = function () {
+        simulateLayerPacking() {
             var packedInLayer = 0;
             var stablePlacements = 0;
             var currentX = 0;
@@ -707,12 +727,11 @@ var boxologic;
 
             this.packed_layout_height += this.layer_thickness;
             return { packed: packedInLayer, stablePlacements: stablePlacements };
-        };
-
+        }
         /**
          * <p> Find the best box that fits at the given position </p>
          */
-        Boxologic.prototype.findBestBoxForPosition = function (x, z) {
+        findBestBoxForPosition(x, z) {
             var availableWidth = this.pallet.layout_width - x;   // X direction
             var availableLength = this.remain_layout_length - z;  // Z direction
             var availableHeight = this.layer_thickness;            // Y direction (layer thickness)
@@ -756,12 +775,11 @@ var boxologic;
             }
 
             return bestFit;
-        };
-
+        }
         /**
          * <p> Get valid orientations for a box based on rotation mode </p>
          */
-        Boxologic.prototype.getValidOrientations = function (box) {
+        getValidOrientations(box) {
             var orientations = [];
             var seen = {};
 
@@ -791,12 +809,11 @@ var boxologic;
             }
 
             return orientations;
-        };
-
+        }
         /**
          * <p> Apply the selected placement solution </p>
          */
-        Boxologic.prototype.applyPlacementSolution = function (solution) {
+        applyPlacementSolution(solution) {
             for (var i = 0; i < this.box_array.size(); i++) {
                 var box = this.box_array.at(i);
                 var state = solution.boxStates[i];
@@ -816,14 +833,13 @@ var boxologic;
                 }
             }
             this.packing = false;
-        };
-
+        }
         /**
          * <p> Construct layers. </p>
          *
          * <p> Creates all possible layer heights by giving a weight value to each of them. </p>
          */
-        Boxologic.prototype.construct_layers = function () {
+        construct_layers() {
             this.layer_map.clear();
             for (var i = 0; i < this.box_array.size(); i++) {
                 var box = this.box_array.at(i);
@@ -886,13 +902,13 @@ var boxologic;
                     this.layer_map.set(ex_dim, layer_eval);
                 }
             }
-        };
+        }
         /**
          * <p> Packs the boxes found and arranges all variables and records properly. </p>
          *
          * <p> Update the linked list and the Boxlist[] array as a box is packed. </p>
          */
-        Boxologic.prototype.pack_layer = function () {
+        pack_layer() {
             if (this.layer_thickness == 0) {
                 this.packing = false;
                 return;
@@ -996,7 +1012,7 @@ var boxologic;
                     }
                 }
                 else if (next.equals(this.scrap_list.end())) {
-                    ////////////////////////////////////////////////////////
+                    /////////////////////////////////////////////////////////
                     // NO RIGHT BUT LEFT
                     /////////////////////////////////////////////////////////
                     //*** SITUATION-3: NO BOXES ON THE RIGHT SIDE ***
@@ -1163,12 +1179,12 @@ var boxologic;
                 }
                 this.volume_check();
             }
-        };
+        }
         /**
          * Find the most proper layer height by looking at the unpacked boxes and
          * the remaining empty space available.
          */
-        Boxologic.prototype.find_layer = function (thickness) {
+        find_layer(thickness) {
             // MINIMUM SUM OF LAYERS (height)
             var min_eval = Number.MAX_VALUE;
             this.layer_thickness = 0;
@@ -1227,7 +1243,7 @@ var boxologic;
             }
             if (this.layer_thickness == 0 || this.layer_thickness > this.remain_layout_height)
                 this.packing = false;
-        };
+        }
         /**
          * <p> Determine the gap with the samllest z value in the current layer. </p>
          *
@@ -1240,7 +1256,7 @@ var boxologic;
          * @param hz Z-dimension of the current gap to be filled.
          * @param hmz Maximum available z-dimension to the current gap to be filled.
          */
-        Boxologic.prototype.find_box = function (hmx, hy, hmy, hz, hmz) {
+        find_box(hmx, hy, hmy, hz, hmz) {
             this.boxi = -1;
             this.bboxi = -1;
             this.bfx = Number.MAX_VALUE;
@@ -1281,16 +1297,13 @@ var boxologic;
                 this.analyze_box(i, hmx, hy, hmy, hz, hmz, box.length, box.width, box.height);
                 this.analyze_box(i, hmx, hy, hmy, hz, hmz, box.length, box.height, box.width);
             }
-        };
-
+        }
         /**
          * <p> Instance method that delegates to the shared calculateSupportRatio function. </p>
          */
-        Boxologic.prototype.calculateSupportRatio = function (
-            x, z, width, length, supportingBoxes) {
+        calculateSupportRatio(x, z, width, length, supportingBoxes) {
             return calculateSupportRatio(x, z, width, length, supportingBoxes);
-        };
-
+        }
         /**
          * <p> Check stability of a box placement in stable mode. </p>
          *
@@ -1304,7 +1317,7 @@ var boxologic;
          * @param y Y coordinate of the proposed placement
          * @return true if stable, false if unstable
          */
-        Boxologic.prototype.check_stability = function (x, z, width, length, y) {
+        check_stability(x, z, width, length, y) {
             // Stability configuration constants
             var MIN_SUPPORT_RATIO = 0.7; // Minimum 70% support area required
 
@@ -1360,8 +1373,7 @@ var boxologic;
             }
 
             return true; // Stable placement
-        };
-
+        }
         /**
          * <p> Analyzes each unpacked {@link Box box} to find the best fitting one to the empty space. </p>
          *
@@ -1379,7 +1391,7 @@ var boxologic;
          * @param dim2 Y-dimension of the orientation of the box being examined.
          * @param dim3 Z-dimension of the orientation of the box being examined.
          */
-        Boxologic.prototype.analyze_box = function (index, hmx, hy, hmy, hz, hmz, dim1, dim2, dim3) {
+        analyze_box(index, hmx, hy, hmy, hz, hmz, dim1, dim2, dim3) {
             // OUT OF BOUNDARY RANGE
             if (dim1 > hmx || dim2 > hmy || dim3 > hmz)
                 return;
@@ -1436,11 +1448,11 @@ var boxologic;
                 this.bbfz = Math.abs(hz - dim3) - yAxisBonus;
                 this.bboxi = index;
             }
-        };
+        }
         /**
          * After finding each box, the candidate boxes and the condition of the layer are examined.
          */
-        Boxologic.prototype.check_found = function () {
+        check_found() {
             this.evened = false;
             if (this.boxi != -1) {
                 this.cboxi = this.boxi;
@@ -1525,11 +1537,11 @@ var boxologic;
                     }
                 }
             }
-        };
+        }
         /**
          * After packing of each box, 100% packing condition is checked.
          */
-        Boxologic.prototype.volume_check = function () {
+        volume_check() {
             var box = this.box_array.at(this.cboxi);
             box.is_packed = true;
             box.layout_width = this.cbox_layout_width;
@@ -1540,7 +1552,7 @@ var boxologic;
                 this.packing = false;
                 this.hundred_percent = true;
             }
-        };
+        }
         /* -----------------------------------------------------------
             GETTERS
         ----------------------------------------------------------- */
@@ -1549,12 +1561,12 @@ var boxologic;
          *
          * <p> Determine the gap with the {@link scrap_min_z smallest z} value in the current layer. </p>
          */
-        Boxologic.prototype.find_smallest_z = function () {
+        find_smallest_z() {
             this.scrap_min_z = this.scrap_list.begin();
             for (var it = this.scrap_min_z; !it.equals(this.scrap_list.end()); it = it.next())
                 if (it.value.cumz < this.scrap_min_z.value.cumz)
                     this.scrap_min_z = it;
-        };
+        }
         /* -----------------------------------------------------------
             REPORTERS
         ----------------------------------------------------------- */
@@ -1563,7 +1575,7 @@ var boxologic;
          *
          * <p> Using the parameters found, packs the best solution found and reports. </p>
          */
-        Boxologic.prototype.report_results = function () {
+        report_results() {
             ////////////////////////////////////////////////////
             // BEGINS RE-PACKING FOLLOWING THE BEST VARS
             ////////////////////////////////////////////////////
@@ -1579,14 +1591,14 @@ var boxologic;
                     this.write_box_file();
                 }
             }
-        };
+        }
         /**
          * <p> Determine a {@link Box}. </p>
          *
          * <p> Transforms the found co-ordinate system to the one entered by the user and write them to the
          * report. </p>
          */
-        Boxologic.prototype.write_box_file = function () {
+        write_box_file() {
             var box = this.box_array.at(this.cboxi);
             var cox;
             var coy;
@@ -1650,13 +1662,10 @@ var boxologic;
             box.layout_width = layout_width;
             box.layout_height = layout_height;
             box.layout_length = layout_length;
-        };
-        return Boxologic;
-    }());
+        }
+    }
     boxologic.Boxologic = Boxologic;
 })(boxologic || (boxologic = {}));
-/// <reference path="../bws/packer/API.ts" />
-/// <reference path="Instance.ts" />
 var boxologic;
 (function (boxologic) {
     /**
@@ -1665,20 +1674,19 @@ var boxologic;
      * @author Bill Knechtel, <br>
      *		   Migrated and Refactored by Jeongho Nam <http://samchon.org>
      */
-    var Pallet = (function (_super) {
-        __extends(Pallet, _super);
+    class Pallet extends boxologic.Instance {
         /**
          * Construct from a wrapper.
          *
          * @param wrapper A wrapper wrapping instances.
          */
-        function Pallet(wrapper) {
-            return _super.call(this, wrapper.getContainableWidth(), wrapper.getContainableHeight(), wrapper.getContainableLength()) || this;
+        constructor(wrapper) {
+            super(wrapper.getContainableWidth(), wrapper.getContainableHeight(), wrapper.getContainableLength());
         }
         /**
          * Set placement orientation.
          */
-        Pallet.prototype.set_orientation = function (orientation) {
+        set_orientation(orientation) {
             switch (orientation) {
                 case 1:
                     this.layout_width = this.width;
@@ -1711,12 +1719,10 @@ var boxologic;
                     this.layout_length = this.width;
                     break;
             }
-        };
-        return Pallet;
-    }(boxologic.Instance));
+        }
+    }
     boxologic.Pallet = Pallet;
 })(boxologic || (boxologic = {}));
-/// <reference path="../bws/packer/API.ts" />
 var boxologic;
 (function (boxologic) {
     /**
@@ -1727,18 +1733,16 @@ var boxologic;
      * @author Bill Knechtel, <br>
      *		   Migrated and Refactored by Jeongho Nam <http://samchon.org>
      */
-    var Scrap = (function () {
-        function Scrap(cumx, cumz) {
+    class Scrap {
+        constructor(cumx, cumz) {
             if (cumx === void 0) { cumx = 0; }
             if (cumz === void 0) { cumz = 0; }
             this.cumx = cumx;
             this.cumz = cumz;
         }
-        return Scrap;
-    }());
+    }
     boxologic.Scrap = Scrap;
 })(boxologic || (boxologic = {}));
-/// <reference path="API.ts" />
 var bws;
 (function (bws) {
     var packer;
@@ -1748,35 +1752,32 @@ var bws;
          *
          * @author Jeongho Nam <http://samchon.org>
          */
-        var PackerForm = (function (_super) {
-            __extends(PackerForm, _super);
-            function PackerForm(instanceFormArray, wrapperArray) {
+        class PackerForm extends packer_1.protocol.Entity {
+            constructor(instanceFormArray, wrapperArray) {
                 if (instanceFormArray === void 0) { instanceFormArray = new InstanceFormArray(); }
                 if (wrapperArray === void 0) { wrapperArray = new packer_1.WrapperArray(); }
-                var _this = _super.call(this) || this;
-                _this.instanceFormArray = instanceFormArray;
-                _this.wrapperArray = wrapperArray;
-                return _this;
+                super();
+                this.instanceFormArray = instanceFormArray;
+                this.wrapperArray = wrapperArray;
             }
             /* -----------------------------------------------------------
                 ACCESSORS
             ----------------------------------------------------------- */
-            PackerForm.prototype.optimize = function () {
+            optimize() {
                 var packer = this.toPacker();
                 return packer.optimize();
-            };
-            PackerForm.prototype.getInstanceFormArray = function () {
+            }
+            getInstanceFormArray() {
                 return this.instanceFormArray;
-            };
-            PackerForm.prototype.getWrapperArray = function () {
+            }
+            getWrapperArray() {
                 return this.wrapperArray;
-            };
-            PackerForm.prototype.toPacker = function () {
+            }
+            toPacker() {
                 var packer = new packer_1.Packer(this.wrapperArray, this.instanceFormArray.toInstanceArray());
                 return packer;
-            };
-            return PackerForm;
-        }(packer_1.protocol.Entity));
+            }
+        }
         packer_1.PackerForm = PackerForm;
         /**
          * An array of {@link InstanceForm} objects.
@@ -1814,67 +1815,45 @@ var bws;
          *
          * @author Jeongho Nam <http://samchon.org>
          */
-        var InstanceForm = (function (_super) {
-            __extends(InstanceForm, _super);
+        class InstanceForm extends packer_1.protocol.Entity {
             /* -----------------------------------------------------------
                 CONSTRUCTORS
             ----------------------------------------------------------- */
             /**
              * Default Constructor.
              */
-            function InstanceForm(instance, count) {
+            constructor(instance, count) {
                 if (instance === void 0) { instance = new packer_1.Product("No name", 10, 10, 10); }
                 if (count === void 0) { count = 1; }
-                var _this = _super.call(this) || this;
-                _this.instance = instance;
-                _this.count = count;
-                return _this;
+                super();
+                this.instance = instance;
+                this.count = count;
             }
             /* -----------------------------------------------------------
                 ACCESSORS
             ----------------------------------------------------------- */
-            InstanceForm.prototype.key = function () {
+            key() {
                 return this.instance.getName();
-            };
-            InstanceForm.prototype.getInstance = function () {
+            }
+            getInstance() {
                 return this.instance;
-            };
-            InstanceForm.prototype.getCount = function () {
+            }
+            getCount() {
                 return this.count;
-            };
-            InstanceForm.prototype.setCount = function (val) {
+            }
+            setCount(val) {
                 this.count = val;
-            };
-            Object.defineProperty(InstanceForm.prototype, "$name", {
-                get: function () { return this.instance.getName(); },
-                set: function (val) { this.instance.setName(val); },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(InstanceForm.prototype, "$width", {
-                get: function () { return this.instance.getWidth() + ""; },
-                set: function (val) { this.instance.setWidth(parseFloat(val)); },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(InstanceForm.prototype, "$height", {
-                get: function () { return this.instance.getHeight() + ""; },
-                set: function (val) { this.instance.setHeight(parseFloat(val)); },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(InstanceForm.prototype, "$length", {
-                get: function () { return this.instance.getLength() + ""; },
-                set: function (val) { this.instance.setLength(parseFloat(val)); },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(InstanceForm.prototype, "$count", {
-                get: function () { return this.count + ""; },
-                set: function (val) { this.count = parseInt(val); },
-                enumerable: true,
-                configurable: true
-            });
+            }
+            get $name() { return this.instance.getName(); }
+            set $name(val) { this.instance.setName(val); }
+            get $width() { return this.instance.getWidth() + ""; }
+            set $width(val) { this.instance.setWidth(parseFloat(val)); }
+            get $height() { return this.instance.getHeight() + ""; }
+            set $height(val) { this.instance.setHeight(parseFloat(val)); }
+            get $length() { return this.instance.getLength() + ""; }
+            set $length(val) { this.instance.setLength(parseFloat(val)); }
+            get $count() { return this.count + ""; }
+            set $count(val) { this.count = parseInt(val); }
             /**
              * <p> Repeated {@link instance} to {@link InstanceArray}.
              *
@@ -1885,17 +1864,15 @@ var bws;
              *
              * @return An array of instance containing repeated {@link instance}.
              */
-            InstanceForm.prototype.toInstanceArray = function () {
+            toInstanceArray() {
                 var instanceArray = new packer_1.InstanceArray();
                 instanceArray.assign(this.count, this.instance);
                 return instanceArray;
-            };
-            return InstanceForm;
-        }(packer_1.protocol.Entity));
+            }
+        }
         packer_1.InstanceForm = InstanceForm;
     })(packer = bws.packer || (bws.packer = {}));
 })(bws || (bws = {}));
-/// <reference path="API.ts" />
 var bws;
 (function (bws) {
     var packer;
@@ -1908,23 +1885,22 @@ var bws;
              * Default Constructor.
              */
             constructor() { super(); }
-        }
             /* -----------------------------------------------------------
                 GETTERS
             ----------------------------------------------------------- */
             /**
              * Get (calculate) price.
              */
-            WrapperArray.prototype.getPrice = function () {
+            getPrice() {
                 var price = 0.0;
                 for (var i = 0; i < this.size(); i++)
                     price += this.at(i).getPrice();
                 return price;
-            };
+            }
             /**
              * Get (calculate) utilization rate.
              */
-            WrapperArray.prototype.getUtilization = function () {
+            getUtilization() {
                 if (this.empty() == true)
                     return -1.0;
                 var numerator = 0.0;
@@ -1936,15 +1912,14 @@ var bws;
                         numerator += wrapper.at(j).getVolume();
                 }
                 return numerator / denominator;
-            };
-            WrapperArray.prototype.createChild = function (xml) {
+            }
+            createChild(xml) {
                 return new packer.Wrapper();
-            };
+            }
+        }
         packer.WrapperArray = WrapperArray;
     })(packer = bws.packer || (bws.packer = {}));
 })(bws || (bws = {}));
-/// <reference path="API.ts" />
-/// <reference path="WrapperArray.ts" />
 var bws;
 (function (bws) {
     var packer;
@@ -1963,8 +1938,7 @@ var bws;
                     this.assign(genes.begin(), genes.end());
                 }
             }
-        }
-            GAWrapperArray.prototype.constructResult = function () {
+            constructResult() {
                 if (this.result.empty() == false)
                     return; // IF RESULT IS ALREADY DEDUCTED
                 // INSTANCE AND WRAPPER IS CORRESPOND, 1:1 RELATIONSHIP.
@@ -1991,7 +1965,7 @@ var bws;
                     it.second.optimize();
                     this.price += it.second.getPrice();
                 }
-            };
+            }
             /* -----------------------------------------------------------
                 GETTERS
             ----------------------------------------------------------- */
@@ -2000,11 +1974,11 @@ var bws;
              *
              * @return result map.
              */
-            GAWrapperArray.prototype.getResult = function () {
+            getResult() {
                 this.constructResult();
                 return this.result;
-            };
-            GAWrapperArray.prototype.less = function (obj) {
+            }
+            less(obj) {
                 this.constructResult();
                 obj.constructResult();
                 if (this.valid == true && obj.valid == true)
@@ -2013,11 +1987,11 @@ var bws;
                     return true;
                 else
                     return false;
-            };
+            }
+        }
         packer.GAWrapperArray = GAWrapperArray;
     })(packer = bws.packer || (bws.packer = {}));
 })(bws || (bws = {}));
-/// <reference path="API.ts" />
 var bws;
 (function (bws) {
     var packer;
@@ -2035,14 +2009,13 @@ var bws;
              * Default Constructor.
              */
             constructor() { super(); }
+            createChild(xml) {
+                return new packer.Product();
+            }
         }
-        InstanceArray.prototype.createChild = function (xml) {
-            return new packer.Product();
-        };
         packer.InstanceArray = InstanceArray;
     })(packer = bws.packer || (bws.packer = {}));
 })(bws || (bws = {}));
-/// <reference path="API.ts" />
 var bws;
 (function (bws) {
     var packer;
@@ -2066,23 +2039,21 @@ var bws;
          *
          * @author Jeongho Nam <http://samchon.org>
          */
-        var Packer = (function (_super) {
-            __extends(Packer, _super);
-            function Packer(wrapperArray, instanceArray, options) {
+        class Packer extends packer.protocol.Entity {
+            constructor(wrapperArray, instanceArray, options) {
                 if (wrapperArray === void 0) { wrapperArray = null; }
                 if (instanceArray === void 0) { instanceArray = null; }
                 if (options === void 0) { options = { isNotUseBeamSearch: false }; }
-                var _this = _super.call(this) || this;
+                super();
                 if (wrapperArray == null && instanceArray == null) {
-                    _this.wrapperArray = new packer.WrapperArray();
-                    _this.instanceArray = new packer.InstanceArray();
+                    this.wrapperArray = new packer.WrapperArray();
+                    this.instanceArray = new packer.InstanceArray();
                 }
                 else {
-                    _this.wrapperArray = wrapperArray;
-                    _this.instanceArray = instanceArray;
+                    this.wrapperArray = wrapperArray;
+                    this.instanceArray = instanceArray;
                 }
-                _this.options = options;
-                return _this;
+                this.options = options;
             }
             /* -----------------------------------------------------------
                 GETTERS
@@ -2090,15 +2061,15 @@ var bws;
             /**
              * Get wrapperArray.
              */
-            Packer.prototype.getWrapperArray = function () {
+            getWrapperArray() {
                 return this.wrapperArray;
-            };
+            }
             /**
              * Get instanceArray.
              */
-            Packer.prototype.getInstanceArray = function () {
+            getInstanceArray() {
                 return this.instanceArray;
-            };
+            }
             /* -----------------------------------------------------------
                 OPTIMIZERS
             ----------------------------------------------------------- */
@@ -2106,7 +2077,7 @@ var bws;
              * <p> Deduct
              *
              */
-            Packer.prototype.optimize = function () {
+            optimize() {
                 if (this.instanceArray.empty() || this.wrapperArray.empty())
                     throw new std.InvalidArgument("Any instance or wrapper is not constructed.");
                 var wrappers = new packer.WrapperArray(); // TO BE RETURNED
@@ -2173,7 +2144,7 @@ var bws;
                 }
                 wrappers.fillRates = fillRates;
                 return wrappers;
-            };
+            }
             /**
              * @brief Initialize sequence list (gene_array).
              *
@@ -2199,7 +2170,7 @@ var bws;
              *
              * @return Initial sequence list.
              */
-            Packer.prototype.initGenes = function () {
+            initGenes() {
                 ////////////////////////////////////////////////////
                 // LINEAR OPTIMIZATION
                 ////////////////////////////////////////////////////
@@ -2233,7 +2204,7 @@ var bws;
                 }
                 ////////////////////////////////////////////////////
                 // ADDICTIONAL OPTIMIZATION BY POST-PROCESS
-                ////////////////////////////////////////////////////0
+                ////////////////////////////////////////////////////
                 // OPTIMIZE WRAPPER_GROUP
                 var wrappers = new packer.WrapperArray();
                 for (var i = 0; i < wrapperGroups.size(); i++) {
@@ -2261,14 +2232,14 @@ var bws;
                 geneArray.options = this.options;
                 geneArray.assign(genes.begin(), genes.end());
                 return geneArray;
-            };
+            }
             /**
              * Try to repack each wrappers to another type.
              *
              * @param $wrappers Wrappers to repack.
              * @return Re-packed wrappers.
              */
-            Packer.prototype.repack = function ($wrappers) {
+            repack($wrappers) {
                 var result = new packer.WrapperArray();
                 for (var i = 0; i < $wrappers.size(); i++) {
                     var wrapper = $wrappers.at(i);
@@ -2301,13 +2272,11 @@ var bws;
                     result.insert(result.end(), minGroup.begin(), minGroup.end());
                 }
                 return result;
-            };
-            return Packer;
-        }(packer.protocol.Entity));
+            }
+        }
         packer.Packer = Packer;
     })(packer = bws.packer || (bws.packer = {}));
 })(bws || (bws = {}));
-/// <reference path="API.ts" />
 var bws;
 (function (bws) {
     var packer;
@@ -2317,44 +2286,42 @@ var bws;
          *
          * @author Jeongho Nam <http://samchon.org>
          */
-        var Product = (function (_super) {
-            __extends(Product, _super);
-            function Product(name, width, height, length) {
+        class Product extends packer.protocol.Entity {
+            constructor(name, width, height, length) {
                 if (name === void 0) { name = "No Name"; }
                 if (width === void 0) { width = 0; }
                 if (height === void 0) { height = 0; }
                 if (length === void 0) { length = 0; }
-                var _this = _super.call(this) || this;
+                super();
                 /**
                  * <p> Name, key of the Product. </p>
                  *
                  * <p> The name must be unique because a name identifies a {@link Product}. </p>
                  */
-                _this.name = "";
+                this.name = "";
                 /**
                  * Width of the Product, length on the X-axis in 3D.
                  */
-                _this.width = 0.0;
+                this.width = 0.0;
                 /**
                  * Height of the Product, length on the Y-axis in 3D.
                  */
-                _this.height = 0.0;
+                this.height = 0.0;
                 /**
                  * Length of the Product, length on the Z-axis in 3D.
                  */
-                _this.length = 0.0;
-                _this.name = name;
-                _this.width = width;
-                _this.height = height;
-                _this.length = length;
+                this.length = 0.0;
+                this.name = name;
+                this.width = width;
+                this.height = height;
+                this.length = length;
                 /**
                  * Rotation mode for packing.
                  *   "all"   - all 6 orientations (default)
                  *   "yAxis" - Y-axis rotation only: height stays fixed, width/length may be swapped
                  *   "none"  - no rotation (天地無用 / this side up)
                  */
-                _this._rotationMode = "all";
-                return _this;
+                this._rotationMode = "all";
             }
             /* -----------------------------------------------------------
                 ACCESSORS
@@ -2362,70 +2329,70 @@ var bws;
             /**
              * Key of a Product is its name.
              */
-            Product.prototype.key = function () {
+            key() {
                 return this.name;
-            };
+            }
             /**
              * @inheritdoc
              */
-            Product.prototype.getName = function () {
+            getName() {
                 return this.name;
-            };
+            }
             /**
              * @inheritdoc
              */
-            Product.prototype.getWidth = function () {
+            getWidth() {
                 return this.width;
-            };
+            }
             /**
              * @inheritdoc
              */
-            Product.prototype.getHeight = function () {
+            getHeight() {
                 return this.height;
-            };
+            }
             /**
              * @inheritdoc
              */
-            Product.prototype.getLength = function () {
+            getLength() {
                 return this.length;
-            };
+            }
             /**
              * @inheritdoc
              */
-            Product.prototype.getVolume = function () {
+            getVolume() {
                 return this.width * this.height * this.length;
-            };
+            }
             /**
              * @inheritdoc
              */
-            Product.prototype.setName = function (val) {
+            setName(val) {
                 this.name = val;
-            };
+            }
             /**
              * @inheritdoc
              */
-            Product.prototype.setWidth = function (val) {
+            setWidth(val) {
                 this.width = val;
-            };
+            }
             /**
              * @inheritdoc
              */
-            Product.prototype.setHeight = function (val) {
+            setHeight(val) {
                 this.height = val;
-            };
+            }
             /**
              * @inheritdoc
              */
-            Product.prototype.setLength = function (val) {
+            setLength(val) {
                 this.length = val;
-            };
+            }
             /**
              * Get whether rotation is allowed for this product.
              * @returns false only when rotationMode is "none".
              */
-            Product.prototype.getAllowRotation = function () {
+            getAllowRotation() {
                 return this._rotationMode !== "none";
-            };
+            }
             /**
              * Set whether rotation is allowed for this product (backward-compatible).
              * true  => rotationMode "all"
@@ -2434,16 +2401,16 @@ var bws;
              *
              * @param val true to allow all rotations (default), false to forbid rotation.
              */
-            Product.prototype.setAllowRotation = function (val) {
+            setAllowRotation(val) {
                 this._rotationMode = val ? "all" : "none";
-            };
+            }
             /**
              * Get the rotation mode.
              * @returns "all" | "yAxis" | "none"
              */
-            Product.prototype.getRotationMode = function () {
+            getRotationMode() {
                 return this._rotationMode;
-            };
+            }
             /**
              * Set the rotation mode.
              *   "all"   - all 6 orientations (default)
@@ -2452,15 +2419,13 @@ var bws;
              *
              * @param mode "all" | "yAxis" | "none"
              */
-            Product.prototype.setRotationMode = function (mode) {
+            setRotationMode(mode) {
                 this._rotationMode = mode;
-            };
-            return Product;
-        }(packer.protocol.Entity));
+            }
+        }
         packer.Product = Product;
     })(packer = bws.packer || (bws.packer = {}));
 })(bws || (bws = {}));
-/// <reference path="API.ts" />
 var bws;
 (function (bws) {
     var packer;
@@ -2477,23 +2442,21 @@ var bws;
          *
          * @author Jeongho Nam <http://samchon.org>
          */
-        var Wrap = (function (_super) {
-            __extends(Wrap, _super);
-            function Wrap(wrapper, instance, x, y, z, orientation) {
+        class Wrap extends packer.protocol.Entity {
+            constructor(wrapper, instance, x, y, z, orientation) {
                 if (instance === void 0) { instance = null; }
                 if (x === void 0) { x = 0; }
                 if (y === void 0) { y = 0; }
                 if (z === void 0) { z = 0; }
                 if (orientation === void 0) { orientation = 1; }
-                var _this = _super.call(this) || this;
-                _this.wrapper = wrapper;
-                _this.instance = instance;
-                _this.x = x;
-                _this.y = y;
-                _this.z = z;
-                _this.orientation = orientation;
-                _this.supportRatio = 0.0;
-                return _this;
+                super();
+                this.wrapper = wrapper;
+                this.instance = instance;
+                this.x = x;
+                this.y = y;
+                this.z = z;
+                this.orientation = orientation;
+                this.supportRatio = 0.0;
             }
             /* ===========================================================
                 SETTERS
@@ -2507,9 +2470,9 @@ var bws;
              *
              * @param orientation Orientation code (1 to 6).
              */
-            Wrap.prototype.setOrientation = function (orientation) {
+            setOrientation(orientation) {
                 this.orientation = orientation;
-            };
+            }
             /**
              * Set position.
              *
@@ -2517,11 +2480,11 @@ var bws;
              * @param y Coordinate-Y of the instance placement in the wrapper.
              * @param z Coordinate-Z of the instance placement in the wrapper.
              */
-            Wrap.prototype.setPosition = function (x, y, z) {
+            setPosition(x, y, z) {
                 this.x = x;
                 this.y = y;
                 this.z = z;
-            };
+            }
             /* -----------------------------------------------------------
                 ESTIMATERS
             ----------------------------------------------------------- */
@@ -2532,7 +2495,7 @@ var bws;
              * @param height Height by placement.
              * @param length Length by placement.
              */
-            Wrap.prototype.estimateOrientation = function (width, height, length) {
+            estimateOrientation(width, height, length) {
                 if (this.instance.getWidth() == width && this.instance.getHeight() == height)
                     this.orientation = 1;
                 else if (this.instance.getWidth() == length && this.instance.getHeight() == height)
@@ -2545,13 +2508,13 @@ var bws;
                     this.orientation = 5;
                 else
                     this.orientation = 6;
-            };
+            }
             /**
              * @brief Orientation change is occured in level of the packer.
              *
              * @details orientation Packer's new orientation.
              */
-            Wrap.prototype.changeWrapperOrientation = function (orientation) {
+            changeWrapperOrientation(orientation) {
                 if (orientation == 1)
                     return;
                 // DECLARES
@@ -2605,62 +2568,62 @@ var bws;
                 this.x = x;
                 this.y = y;
                 this.z = z;
-            };
+            }
             /* ===========================================================
                 GETTERS
             =========================================================== */
             /**
              * Get wrapper.
              */
-            Wrap.prototype.getWrapper = function () {
+            getWrapper() {
                 return this.wrapper;
-            };
+            }
             /**
              * Get instance.
              */
-            Wrap.prototype.getInstance = function () {
+            getInstance() {
                 return this.instance;
-            };
+            }
             /**
              * Get x.
              */
-            Wrap.prototype.getX = function () {
+            getX() {
                 return this.x;
-            };
+            }
             /**
              * Get y.
              */
-            Wrap.prototype.getY = function () {
+            getY() {
                 return this.y;
-            };
+            }
             /**
              * Get z.
              */
-            Wrap.prototype.getZ = function () {
+            getZ() {
                 return this.z;
-            };
+            }
             /**
              * Get orientation.
              */
-            Wrap.prototype.getOrientation = function () {
+            getOrientation() {
                 return this.orientation;
-            };
+            }
             /**
              * Get support ratio.
              */
-            Wrap.prototype.getSupportRatio = function () {
+            getSupportRatio() {
                 return this.supportRatio;
-            };
+            }
             /**
              * Set support ratio.
              */
-            Wrap.prototype.setSupportRatio = function (ratio) {
+            setSupportRatio(ratio) {
                 this.supportRatio = ratio;
-            };
+            }
             /**
              * Get width.
              */
-            Wrap.prototype.getLayoutWidth = function () {
+            getLayoutWidth() {
                 switch (this.orientation) {
                     case 1:
                     case 5:
@@ -2671,11 +2634,11 @@ var bws;
                     default:
                         return this.instance.getLength();
                 }
-            };
+            }
             /**
              * Get height.
              */
-            Wrap.prototype.getLayoutHeight = function () {
+            getLayoutHeight() {
                 switch (this.orientation) {
                     case 1:
                     case 2:
@@ -2686,11 +2649,11 @@ var bws;
                     default:
                         return this.instance.getLength();
                 }
-            };
+            }
             /**
              * Get length.
              */
-            Wrap.prototype.getLength = function () {
+            getLength() {
                 switch (this.orientation) {
                     case 1:
                     case 4:
@@ -2701,40 +2664,26 @@ var bws;
                     default:
                         return this.instance.getHeight();
                 }
-            };
+            }
             /**
              * Get volume.
              */
-            Wrap.prototype.getVolume = function () {
+            getVolume() {
                 return this.instance.getVolume();
-            };
-            Object.defineProperty(Wrap.prototype, "$instanceName", {
-                get: function () {
-                    return this.instance.getName();
-                },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(Wrap.prototype, "$layoutScale", {
-                get: function () {
-                    return this.getLayoutWidth() + ", " + this.getLayoutHeight() + ", " + this.getLength();
-                },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(Wrap.prototype, "$position", {
-                get: function () {
-                    return this.x + ", " + this.y + ", " + this.z;
-                },
-                enumerable: true,
-                configurable: true
-            });
-            return Wrap;
-        }(packer.protocol.Entity));
+            }
+            get $instanceName() {
+                return this.instance.getName();
+            }
+            get $layoutScale() {
+                return this.getLayoutWidth() + ", " + this.getLayoutHeight() + ", " + this.getLength();
+            }
+            get $position() {
+                return this.x + ", " + this.y + ", " + this.z;
+            }
+        }
         packer.Wrap = Wrap;
     })(packer = bws.packer || (bws.packer = {}));
 })(bws || (bws = {}));
-/// <reference path="API.ts" />
 var bws;
 (function (bws) {
     var packer;
@@ -2745,11 +2694,7 @@ var bws;
          * @author Jeongho Nam <http://samchon.org>
          */
         class Wrapper extends packer.protocol.EntityDeque {
-            constructor() {
-                var args = [];
-                for (var _i = 0; _i < arguments.length; _i++) {
-                    args[_i] = arguments[_i];
-                }
+            constructor(...args) {
                 super();
                 /**
                  * <p> Name, key of the Wrapper. </p>
@@ -2815,7 +2760,6 @@ var bws;
                     this.stableMode = args[6];
                 }
             }
-        }
             /* ===========================================================
                 ACCESSORS
                     - MEMBERS
@@ -2829,45 +2773,45 @@ var bws;
             /**
              * Key of a Wrapper is its name.
              */
-            Wrapper.prototype.key = function () {
+            key() {
                 return this.name;
-            };
+            }
             /**
              * Get name.
              */
-            Wrapper.prototype.getName = function () {
+            getName() {
                 return this.name;
-            };
+            }
             /**
              * Get price.
              */
-            Wrapper.prototype.getPrice = function () {
+            getPrice() {
                 return this.price;
-            };
+            }
             /**
              * Get width, length on X-axis in 3D.
              */
-            Wrapper.prototype.getWidth = function () {
+            getWidth() {
                 return this.width;
-            };
+            }
             /**
              * Get height, length on Y-axis in 3D.
              */
-            Wrapper.prototype.getHeight = function () {
+            getHeight() {
                 return this.height;
-            };
+            }
             /**
              * Get length, length on Z-axis in 3D.
              */
-            Wrapper.prototype.getLength = function () {
+            getLength() {
                 return this.length;
-            };
+            }
             /**
              * Get thickness.
              */
-            Wrapper.prototype.getThickness = function () {
+            getThickness() {
                 return this.thickness;
-            };
+            }
             /* -----------------------------------------------------------
                 DERIVED PROPERTIES
             ----------------------------------------------------------- */
@@ -2878,9 +2822,9 @@ var bws;
              *
              * @return width - (2 x thickness)
              */
-            Wrapper.prototype.getContainableWidth = function () {
+            getContainableWidth() {
                 return this.width - (2 * this.thickness);
-            };
+            }
             /**
              * <p> Get (calculate) containable height, length on the Y-axis in 3D. </p>
              *
@@ -2888,9 +2832,9 @@ var bws;
              *
              * @return height - (2 x thickness)
              */
-            Wrapper.prototype.getContainableHeight = function () {
+            getContainableHeight() {
                 return this.height - (2 * this.thickness);
-            };
+            }
             /**
              * <p> Get (calculate) containable length, length on the Z-axis in 3D. </p>
              *
@@ -2898,9 +2842,9 @@ var bws;
              *
              * @return length - (2 x thickness)
              */
-            Wrapper.prototype.getContainableLength = function () {
+            getContainableLength() {
                 return this.length - (2 * this.thickness);
-            };
+            }
             /**
              * <p> Get (calculate) volume. </p>
              *
@@ -2910,9 +2854,9 @@ var bws;
              *
              * @return width x height x length
              */
-            Wrapper.prototype.getVolume = function () {
+            getVolume() {
                 return this.width * this.height * this.length;
-            };
+            }
             /**
              * <p> Get (calculate) containable volume. </p>
              *
@@ -2920,28 +2864,28 @@ var bws;
              *
              * @return volume - {(2 x thickness) ^ 3}
              */
-            Wrapper.prototype.getContainableVolume = function () {
+            getContainableVolume() {
                 return this.getContainableWidth() * this.getContainableHeight() * this.getContainableLength();
-            };
+            }
             /**
              * Get utilization ratio of containable volume.
              *
              * @return utilization ratio.
              */
-            Wrapper.prototype.getUtilization = function () {
+            getUtilization() {
                 var volume = 0.0;
                 for (var i = 0; i < this.size(); i++)
                     volume += this.at(i).getVolume();
                 return volume / this.getContainableVolume();
-            };
+            }
             /* -----------------------------------------------------------
                 COMPARISON
             ----------------------------------------------------------- */
-            Wrapper.prototype.equals = function (obj) {
+            equals(obj) {
                 return this.price == obj.price
                     && this.width == obj.width && this.height == obj.height && this.length == obj.length
                     && this.thickness == obj.thickness;
-            };
+            }
             /**
              * <p> Wrapper is enough greater? </p>
              *
@@ -2950,7 +2894,7 @@ var bws;
              * @param instance An Instance to test.
              * @return Enough greater or not.
              */
-            Wrapper.prototype.containable = function (instance) {
+            containable(instance) {
                 // TEST WHETHER AN INSTANCE IS GREATER THAN WRAPPER
                 var myDims = new std.Vector([this.getContainableWidth(), this.getContainableHeight(), this.getContainableLength()]);
                 var instanceDims = new std.Vector([instance.getWidth(), instance.getHeight(), instance.getLength()]);
@@ -2960,121 +2904,85 @@ var bws;
                     if (myDims.at(i) < instanceDims.at(i))
                         return false;
                 return true;
-            };
+            }
             /* -----------------------------------------------------------
                 SETTERS
             ----------------------------------------------------------- */
             /**
              * @inheritdoc
              */
-            Wrapper.prototype.setName = function (val) {
+            setName(val) {
                 this.name = val;
-            };
+            }
             /**
              * Set price.
              */
-            Wrapper.prototype.setPrice = function (val) {
+            setPrice(val) {
                 this.price = val;
-            };
+            }
             /**
              * @inheritdoc
              */
-            Wrapper.prototype.setWidth = function (val) {
+            setWidth(val) {
                 this.width = val;
-            };
+            }
             /**
              * @inheritdoc
              */
-            Wrapper.prototype.setHeight = function (val) {
+            setHeight(val) {
                 this.height = val;
-            };
+            }
             /**
              * @inheritdoc
              */
-            Wrapper.prototype.setLength = function (val) {
+            setLength(val) {
                 this.length = val;
-            };
+            }
             /**
              * Set thickness.
              */
-            Wrapper.prototype.setThickness = function (val) {
+            setThickness(val) {
                 this.thickness = val;
-            };
+            }
             /**
              * Get stable mode.
              */
-            Wrapper.prototype.getStableMode = function () {
+            getStableMode() {
                 return this.stableMode;
-            };
+            }
             /**
              * Set stable mode.
              */
-            Wrapper.prototype.setStableMode = function (val) {
+            setStableMode(val) {
                 this.stableMode = val;
-            };
-            Object.defineProperty(Wrapper.prototype, "$name", {
-                /* -----------------------------------------------------------
-                    COLUMN ITEMS
-                ----------------------------------------------------------- */
-                get: function () { return this.name; },
-                set: function (val) { this.name = val; },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(Wrapper.prototype, "$price", {
-                get: function () { return this.price + ""; },
-                set: function (val) { this.price = parseFloat(val); },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(Wrapper.prototype, "$width", {
-                get: function () { return this.width + ""; },
-                set: function (val) { this.width = parseFloat(val); },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(Wrapper.prototype, "$height", {
-                get: function () { return this.height + ""; },
-                set: function (val) { this.height = parseFloat(val); },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(Wrapper.prototype, "$length", {
-                get: function () { return this.length + ""; },
-                set: function (val) { this.length = parseFloat(val); },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(Wrapper.prototype, "$thickness", {
-                get: function () { return this.thickness + ""; },
-                set: function (val) { this.thickness = parseFloat(val); },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(Wrapper.prototype, "$stableMode", {
-                get: function () { return this.stableMode + ""; },
-                set: function (val) { this.stableMode = val === "true"; },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(Wrapper.prototype, "$scale", {
-                get: function () {
-                    return this.width + ", " + this.height + ", " + this.length;
-                },
-                enumerable: true,
-                configurable: true
-            });
-            Object.defineProperty(Wrapper.prototype, "$spaceUtilization", {
-                get: function () {
-                    return Math.round(this.getUtilization() * 10000) / 100.0 + "%";
-                },
-                enumerable: true,
-                configurable: true
-            });
+            }
+            /* -----------------------------------------------------------
+                COLUMN ITEMS
+            ----------------------------------------------------------- */
+            get $name() { return this.name; }
+            set $name(val) { this.name = val; }
+            get $price() { return this.price + ""; }
+            set $price(val) { this.price = parseFloat(val); }
+            get $width() { return this.width + ""; }
+            set $width(val) { this.width = parseFloat(val); }
+            get $height() { return this.height + ""; }
+            set $height(val) { this.height = parseFloat(val); }
+            get $length() { return this.length + ""; }
+            set $length(val) { this.length = parseFloat(val); }
+            get $thickness() { return this.thickness + ""; }
+            set $thickness(val) { this.thickness = parseFloat(val); }
+            get $stableMode() { return this.stableMode + ""; }
+            set $stableMode(val) { this.stableMode = val === "true"; }
+            get $scale() {
+                return this.width + ", " + this.height + ", " + this.length;
+            }
+            get $spaceUtilization() {
+                return Math.round(this.getUtilization() * 10000) / 100.0 + "%";
+            }
+        }
         packer.Wrapper = Wrapper;
     })(packer = bws.packer || (bws.packer = {}));
 })(bws || (bws = {}));
-/// <reference path="API.ts" />
 var bws;
 (function (bws) {
     var packer;
@@ -3085,11 +2993,7 @@ var bws;
          * @author Jeongho Nam <http://samchon.org>
          */
         class WrapperGroup extends packer.WrapperArray {
-            constructor() {
-                var args = [];
-                for (var _i = 0; _i < arguments.length; _i++) {
-                    args[_i] = arguments[_i];
-                }
+            constructor(...args) {
                 super();
                 if (args.length == 0) {
                     this.sample = new packer.Wrapper();
@@ -3105,45 +3009,44 @@ var bws;
                 }
                 this.allocatedInstanceArray = new packer.InstanceArray();
             }
-        }
             /* -----------------------------------------------------------
                 GETTERS
             ----------------------------------------------------------- */
             /**
              * Key of a WrapperGroup is dependent on its sample.
              */
-            WrapperGroup.prototype.key = function () {
+            key() {
                 return this.sample.getName();
-            };
+            }
             /**
              * Get sample.
              */
-            WrapperGroup.prototype.getSample = function () {
+            getSample() {
                 return this.sample;
-            };
+            }
             /**
              * Get allocated instances.
              */
-            WrapperGroup.prototype.getAllocatedInstanceArray = function () {
+            getAllocatedInstanceArray() {
                 return this.allocatedInstanceArray;
-            };
+            }
             /**
              * Get (calculate) price.
              *
              * @return (Price of the sample) x (numbers of children Wrappers)
              */
-            WrapperGroup.prototype.getPrice = function () {
+            getPrice() {
                 return this.sample.getPrice() * this.size();
-            };
+            }
             /**
              * @inheritdoc
              */
-            WrapperGroup.prototype.getUtilization = function () {
+            getUtilization() {
                 var utilization = 0.0;
                 for (var i = 0; i < this.size(); i++)
                     utilization += this.at(i).getUtilization();
                 return utilization / this.size();
-            };
+            }
             /* -----------------------------------------------------------
                 OPERATORS
             ----------------------------------------------------------- */
@@ -3167,7 +3070,7 @@ var bws;
              * @return Whether the instance is enough small to be wrapped into a (new) wrapper
              *		   of same type with the sample.
              */
-            WrapperGroup.prototype.allocate = function (instance, n) {
+            allocate(instance, n) {
                 if (n === void 0) { n = 1; }
                 // TEST WHETHER A PRODUCT IS NOT LARGER THAN BOX
                 if (this.sample.containable(instance) == false)
@@ -3175,7 +3078,7 @@ var bws;
                 // INSERTS TO THE RESERVED ITEMS
                 this.allocatedInstanceArray.insert(this.allocatedInstanceArray.end(), n, instance);
                 return true;
-            };
+            }
             /**
              * <p> Run optimization in level of the group. </p>
              *
@@ -3191,7 +3094,7 @@ var bws;
              * <p> When call this {@link optimize optimize()} method, ordinary children {@link Wrapper} objects
              * in the {@link WrapperGroup} will be substituted with the newly optimized {@link Wrapper} objects. </p>
              */
-            WrapperGroup.prototype.optimize = function () {
+            optimize() {
                 this.clear();
                 var instanceArray = new packer.InstanceArray();
                 instanceArray.assign(this.allocatedInstanceArray.begin(), this.allocatedInstanceArray.end());
@@ -3201,7 +3104,7 @@ var bws;
                     if (instanceArray.size() >= prevSize)
                         break; // No progress — avoid infinite loop
                 }
-            };
+            }
             /**
              * <p> Wrap allocated instances into <b>a new</b> {@link Wrapper}. </p>
              *
@@ -3214,12 +3117,13 @@ var bws;
              * @return Instances failed to {@link Wrap wrap} by overloading.
              * @see boxologic
              */
-            WrapperGroup.prototype.pack = function (instanceArray) {
+            pack(instanceArray) {
                 var boxo = new boxologic.Boxologic(new packer.Wrapper(this.sample), instanceArray, this.options);
                 var resultPair = boxo.pack();
                 this.push_back(resultPair.first);
                 return resultPair.second;
-            };
+            }
+        }
         packer.WrapperGroup = WrapperGroup;
 
         /**

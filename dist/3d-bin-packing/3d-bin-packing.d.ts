@@ -711,6 +711,9 @@ declare namespace bws.packer {
      *
      * @author Jeongho Nam <http://samchon.org>
      */
+    interface PackerOptions {
+        isNotUseBeamSearch?: boolean;
+    }
     class Packer extends protocol.Entity {
         /**
          * Candidate wrappers who can contain instances.
@@ -721,6 +724,10 @@ declare namespace bws.packer {
          */
         protected instanceArray: InstanceArray;
         /**
+         * Packer options.
+         */
+        protected options: PackerOptions;
+        /**
          * Default Constructor.
          */
         constructor();
@@ -729,8 +736,9 @@ declare namespace bws.packer {
          *
          * @param wrapperArray Candidate wrappers who can contain instances.
          * @param instanceArray Instances to be packed into some wrappers.
+         * @param options Packer options.
          */
-        constructor(wrapperArray: WrapperArray, instanceArray: InstanceArray);
+        constructor(wrapperArray: WrapperArray, instanceArray: InstanceArray, options?: PackerOptions);
         /**
          * Get wrapperArray.
          */
