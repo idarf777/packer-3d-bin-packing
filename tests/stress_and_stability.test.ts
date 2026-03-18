@@ -161,6 +161,125 @@ describe("ランダム大量梱包 プログラム安定性テスト", () => {
 });
 
 // =============================================
+// 1.5. ビームサーチ有無の効果比較
+//
+// ランダム product を梱包し、ビームサーチの有無で
+// 処理時間・充填率・使用箱数にどれほど差があるかを出力する。
+// =============================================
+
+describe("ビームサーチ有無の効果比較", () => {
+  const scenarios: Array<{
+    label: string;
+    seed: number;
+    productCount: number;
+    wrapperSize: number;
+    maxProductSize: number;
+    stableMode: boolean;
+  }> = [
+    { label: "小規模 (50個, 非安定)", seed: 42, productCount: 50, wrapperSize: 40, maxProductSize: 6, stableMode: false },
+    { label: "中規模 (200個, 非安定)", seed: 137, productCount: 200, wrapperSize: 60, maxProductSize: 6, stableMode: false },
+    { label: "大規模 (500個, 非安定)", seed: 2718, productCount: 500, wrapperSize: 60, maxProductSize: 6, stableMode: false },
+    { label: "小規模 (50個, 安定)", seed: 42, productCount: 50, wrapperSize: 40, maxProductSize: 6, stableMode: true },
+    { label: "中規模 (200個, 安定)", seed: 137, productCount: 200, wrapperSize: 60, maxProductSize: 6, stableMode: true },
+    { label: "大規模 (500個, 安定)", seed: 2718, productCount: 500, wrapperSize: 60, maxProductSize: 6, stableMode: false },
+  ];
+
+  scenarios.forEach(({ label, seed, productCount, wrapperSize, maxProductSize, stableMode }) => {
+    it(
+      `${label}: ビームサーチ有無で結果と処理時間を比較`,
+      () => {
+        const buildInputs = () => {
+          const rng = createRng(seed);
+          const randInt = (min: number, max: number) =>
+            min + Math.floor(rng() * (max - min + 1));
+
+          const wrappers = new packer.WrapperArray();
+          wrappers.push(
+            new packer.Wrapper("テスト箱", 1000, wrapperSize, wrapperSize, wrapperSize, 0, stableMode),
+          );
+
+          const instances = new packer.InstanceArray();
+          for (let i = 0; i < productCount; i++) {
+            instances.insert(
+              instances.end(),
+              1,
+              new packer.Product(
+                `品_${i}`,
+                randInt(1, maxProductSize),
+                randInt(1, maxProductSize),
+                randInt(1, maxProductSize),
+              ),
+            );
+          }
+          return { wrappers, instances };
+        };
+
+        // --- ビームサーチ有り ---
+        const inputWith = buildInputs();
+        const startWith = performance.now();
+        const resultWith = new packer.Packer(
+          inputWith.wrappers, inputWith.instances, { isNotUseBeamSearch: false },
+        ).optimize();
+        const timeWith = performance.now() - startWith;
+
+        // --- ビームサーチ無し ---
+        const inputWithout = buildInputs();
+        const startWithout = performance.now();
+        const resultWithout = new packer.Packer(
+          inputWithout.wrappers, inputWithout.instances, { isNotUseBeamSearch: true },
+        ).optimize();
+        const timeWithout = performance.now() - startWithout;
+
+        // --- 結果集計 ---
+        const summarize = (result: packer.WrapperArray) => {
+          let totalPacked = 0;
+          let totalVolume = 0;
+          let totalCapacity = 0;
+          for (let i = 0; i < result.size(); i++) {
+            const w = result.at(i) as packer.Wrapper;
+            totalPacked += w.size();
+            totalCapacity += w.getContainableVolume();
+            for (let j = 0; j < w.size(); j++) {
+              const wrap = w.at(j) as packer.Wrap;
+              totalVolume += wrap.getVolume();
+            }
+          }
+          return {
+            wrapperCount: result.size(),
+            packedCount: totalPacked,
+            fillRate: totalCapacity > 0 ? totalVolume / totalCapacity : 0,
+          };
+        };
+
+        const sumWith = summarize(resultWith);
+        const sumWithout = summarize(resultWithout);
+
+        console.log(`\n========== ${label} (stableMode=${stableMode}) ==========`);
+        console.log(`| 項目             | ビームサーチ有り | ビームサーチ無し | 差分           |`);
+        console.log(`|------------------|-----------------|-----------------|----------------|`);
+        console.log(
+          `| 処理時間 (ms)    | ${timeWith.toFixed(1).padStart(15)} | ${timeWithout.toFixed(1).padStart(15)} | ${(timeWith - timeWithout > 0 ? "+" : "") + (timeWith - timeWithout).toFixed(1).padStart(13)} |`,
+        );
+        console.log(
+          `| 使用箱数         | ${String(sumWith.wrapperCount).padStart(15)} | ${String(sumWithout.wrapperCount).padStart(15)} | ${(sumWith.wrapperCount - sumWithout.wrapperCount > 0 ? "+" : "") + String(sumWith.wrapperCount - sumWithout.wrapperCount).padStart(13)} |`,
+        );
+        console.log(
+          `| 梱包数           | ${String(sumWith.packedCount).padStart(15)} | ${String(sumWithout.packedCount).padStart(15)} | ${(sumWith.packedCount - sumWithout.packedCount > 0 ? "+" : "") + String(sumWith.packedCount - sumWithout.packedCount).padStart(13)} |`,
+        );
+        console.log(
+          `| 充填率           | ${(sumWith.fillRate * 100).toFixed(2).padStart(14)}% | ${(sumWithout.fillRate * 100).toFixed(2).padStart(14)}% | ${((sumWith.fillRate - sumWithout.fillRate) * 100 > 0 ? "+" : "") + ((sumWith.fillRate - sumWithout.fillRate) * 100).toFixed(2).padStart(12)}% |`,
+        );
+
+        // 両方とも全製品を梱包できていることを確認
+        expect(sumWith.packedCount).toBe(productCount);
+        expect(sumWithout.packedCount).toBe(productCount);
+      },
+      120_000,
+    );
+  });
+});
+
+// =============================================
 // 2. 底面 70% サポートルール検証テスト
 //
 // 安定モードで 1 種類の wrapper に大きさが異なる product を
