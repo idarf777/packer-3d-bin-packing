@@ -299,10 +299,10 @@ describe("底面70%サポートルール検証", () => {
    * 上の製品は常に下の製品より小さいため 100% サポートされる。
    */
   it("段階的にサイズが小さくなる 10 個の product が 70% ルールを遵守する", () => {
-    // 幅・奥行き 32、高さ 100 の細長い wrapper
+    // 幅 30、高さ 100 の細長い wrapper
     // XZ 平面に 1 個しか収まらないため必ず縦積みになる
     const wrappers = new packer.WrapperArray();
-    wrappers.push(new packer.Wrapper("安定縦積み箱", 1000, 32, 100, 32, 0, true));
+    wrappers.push(new packer.Wrapper("安定縦積み箱", 1000, 30, 100, Math.floor(30 * 0.75), 0, true));
 
     const instances = new packer.InstanceArray();
     // 30 → 12 まで 2 ずつ小さくなる 10 種類（各 1 個）
