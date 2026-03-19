@@ -5,9 +5,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const tstl_1 = __importDefault(require("tstl"));
 // Namespace objects
-var boxologic = {};
-var bws = { packer: {} };
-var packer = bws.packer;
+const boxologic = {};
+const bws = { packer: {} };
+const packer = bws.packer;
 // ===== Protocol classes =====
 // Entity: plain base class
 class Entity {
@@ -3049,8 +3049,4 @@ packer.WrapperGroup = WrapperGroup;
  */
 packer.calculateSupportRatio = calculateSupportRatio;
 // EXPORTS
-try {
-    eval("module.exports = bws.packer");
-}
-catch (exception) { }
 exports.default = bws.packer;

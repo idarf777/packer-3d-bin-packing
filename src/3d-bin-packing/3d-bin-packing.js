@@ -3075,6 +3075,4 @@ packer.WrapperGroup = WrapperGroup;
 packer.calculateSupportRatio = calculateSupportRatio;
 
 // EXPORTS
-try { eval("module.exports = bws.packer"); }
-catch (exception) { }
 export default bws.packer;
