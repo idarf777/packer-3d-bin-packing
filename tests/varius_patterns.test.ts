@@ -845,6 +845,21 @@ describe("エッジケース", () => {
     ]);
   });
 
+  it("製品が箱にギリギリ入る (0 マージン)", () => {
+    singleBoxPack(20, 15, 10, [
+      { name: "ギリギリ", w: 20, h: 15, l: 10, count: 1 },
+    ]);
+  });
+
+  it("製品が箱にギリギリ入らない (-1 マージン)", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(new packer.Wrapper("箱", 1000, 20, 15, 10, 0));
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 1, new packer.Product("ギリギリNG", 21, 15, 10));
+
+    expect(() => new packer.Packer(wrappers, instances).optimize()).toThrow();
+  });
+
   it("箱の次元が製品と順序違い (回転必要)", () => {
     singleBoxPack(15, 10, 20, [
       { name: "回転必要", w: 20, h: 15, l: 10, count: 1 },

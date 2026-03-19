@@ -936,15 +936,11 @@ describe("特定サイズの梱包テスト", () => {
     instances.insert(instances.end(), 14, new packer.Product("製品", 200, 31, 130));
 
     const result = new packer.Packer(wrappers, instances).optimize();
-
-    let totalPacked = 0;
-    for (let i = 0; i < result.size(); i++) {
-      const w = result.at(i) as packer.Wrapper;
-      expect(w.getStableMode()).toBe(true);
-      totalPacked += w.size();
-    }
-    expect(totalPacked).toBe(14);
     expect(result.size()).toBe(1);
+
+    const usedWrapper = result.at(0) as packer.Wrapper;
+    expect(usedWrapper.getStableMode()).toBe(true);
+    expect(usedWrapper.size()).toBe(14);
   });
 });
 
