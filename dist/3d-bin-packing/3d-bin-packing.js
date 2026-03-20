@@ -1916,6 +1916,57 @@ class GAWrapperArray extends packer.WrapperArray {
         else
             return false;
     }
+    /**
+     * @brief Create a mutated copy of this gene array.
+     *
+     * @details Randomly changes wrapper assignments for some instances.
+     * The mutation rate determines the probability of each gene being mutated.
+     *
+     * @param wrapperArray Available wrapper types.
+     * @param mutationRate Probability of each gene being mutated (0.0 ~ 1.0).
+     * @return A new GAWrapperArray with mutations applied.
+     */
+    mutate(wrapperArray, mutationRate) {
+        var child = new packer.GAWrapperArray(this.instanceArray);
+        child.options = this.options;
+        child.assign(this.begin(), this.end());
+        for (var i = 0; i < child.size(); i++) {
+            if (Math.random() < mutationRate) {
+                var instance = this.instanceArray.at(i);
+                // Collect containable wrappers for this instance
+                var containable = [];
+                for (var j = 0; j < wrapperArray.size(); j++) {
+                    if (wrapperArray.at(j).containable(instance))
+                        containable.push(wrapperArray.at(j));
+                }
+                if (containable.length > 0) {
+                    var randomIndex = Math.floor(Math.random() * containable.length);
+                    child.set(i, containable[randomIndex]);
+                }
+            }
+        }
+        return child;
+    }
+    /**
+     * @brief Create a child by crossover of two parent gene arrays.
+     *
+     * @details Performs uniform crossover: for each gene position,
+     * randomly selects the gene from either parent.
+     *
+     * @param partner The other parent GAWrapperArray.
+     * @return A new GAWrapperArray combining genes from both parents.
+     */
+    crossover(partner) {
+        var child = new packer.GAWrapperArray(this.instanceArray);
+        child.options = this.options;
+        for (var i = 0; i < this.size(); i++) {
+            if (Math.random() < 0.5)
+                child.push_back(this.at(i));
+            else
+                child.push_back(partner.at(i));
+        }
+        return child;
+    }
 }
 packer.GAWrapperArray = GAWrapperArray;
 /**
@@ -1964,7 +2015,7 @@ class Packer extends packer.protocol.Entity {
             instanceArray = null;
         }
         if (options === void 0) {
-            options = { isNotUseBeamSearch: false };
+            options = { isNotUseBeamSearch: false, isUseGeneticAlgorithm: false };
         }
         super();
         if (wrapperArray == null && instanceArray == null) {
@@ -2022,11 +2073,68 @@ class Packer extends packer.protocol.Entity {
             ////////////////////////////////////////
             // CONSTRUCT INITIAL SET
             var geneArray = this.initGenes();
-            // EVOLVE
-            // IN JAVA_SCRIPT VERSION, GENETIC_ALGORITHM IS NOT IMPLEMENTED YET.
-            // HOWEVER, IN C++ VERSION, IT IS FULLY SUPPORTED
-            //	http://samchon.github.io/framework/api/cpp/d5/d28/classsamchon_1_1library_1_1GeneticAlgorithm.html
-            // IT WILL BE SUPPORTED SOON
+            // EVOLVE WITH GENETIC ALGORITHM
+            if (this.options.isUseGeneticAlgorithm) {
+                var POPULATION_SIZE = 10;
+                var MAX_GENERATIONS = 20;
+                var MUTATION_RATE = 0.15;
+                var TOURNAMENT_SIZE = 3;
+                var STAGNATION_LIMIT = 5;
+                // Generate initial population from the seed gene
+                var population = [geneArray];
+                for (var p = 1; p < POPULATION_SIZE; p++) {
+                    population.push(geneArray.mutate(this.wrapperArray, 0.3));
+                }
+                // Evaluate all individuals
+                for (var p = 0; p < population.length; p++) {
+                    population[p].constructResult();
+                }
+                // Find initial best
+                var best = null;
+                for (var p = 0; p < population.length; p++) {
+                    if (best == null || population[p].less(best))
+                        best = population[p];
+                }
+                var stagnationCount = 0;
+                // Evolution loop
+                for (var gen = 0; gen < MAX_GENERATIONS; gen++) {
+                    var newPopulation = [];
+                    // Elitism: carry over the best individual
+                    newPopulation.push(best);
+                    // Generate offspring
+                    for (var p = 1; p < POPULATION_SIZE; p++) {
+                        // Tournament selection for two parents
+                        var parentA = this._tournamentSelect(population, TOURNAMENT_SIZE);
+                        var parentB = this._tournamentSelect(population, TOURNAMENT_SIZE);
+                        // Crossover
+                        var child = parentA.crossover(parentB);
+                        // Mutation
+                        child = child.mutate(this.wrapperArray, MUTATION_RATE);
+                        // Evaluate
+                        child.constructResult();
+                        newPopulation.push(child);
+                    }
+                    population = newPopulation;
+                    // Find best of this generation
+                    var genBest = null;
+                    for (var p = 0; p < population.length; p++) {
+                        if (genBest == null || population[p].less(genBest))
+                            genBest = population[p];
+                    }
+                    // Update global best and check stagnation
+                    if (genBest.less(best)) {
+                        best = genBest;
+                        stagnationCount = 0;
+                    }
+                    else {
+                        stagnationCount++;
+                    }
+                    // Early termination if no improvement
+                    if (stagnationCount >= STAGNATION_LIMIT)
+                        break;
+                }
+                geneArray = best;
+            }
             // FETCH RESULT
             var result = geneArray.getResult();
             for (var it = result.begin(); !it.equals(result.end()); it = it.next())
@@ -2154,6 +2262,26 @@ class Packer extends packer.protocol.Entity {
         geneArray.options = this.options;
         geneArray.assign(genes.begin(), genes.end());
         return geneArray;
+    }
+    /**
+     * @brief Tournament selection for genetic algorithm.
+     *
+     * @details Randomly selects tournamentSize individuals from the population
+     * and returns the best one (lowest cost).
+     *
+     * @param population Array of GAWrapperArray individuals.
+     * @param tournamentSize Number of individuals to compete.
+     * @return The best individual from the tournament.
+     */
+    _tournamentSelect(population, tournamentSize) {
+        var best = null;
+        for (var t = 0; t < tournamentSize; t++) {
+            var idx = Math.floor(Math.random() * population.length);
+            var candidate = population[idx];
+            if (best == null || candidate.less(best))
+                best = candidate;
+        }
+        return best;
     }
     /**
      * Try to repack each wrappers to another type.

@@ -1186,3 +1186,312 @@ describe("fillRates", () => {
     expect(result.fillRates[1].fillRate).toBeCloseTo(0.1, 10);
   });
 });
+
+// ─────────────────────────────────────
+// 遺伝的アルゴリズム テスト
+// ─────────────────────────────────────
+
+describe("遺伝的アルゴリズム (GA)", () => {
+  /**
+   * 軽量入力: 2種Wrapper + 少数アイテム（基本動作テスト用）
+   */
+  function buildLightInputs(): {
+    wrappers: packer.WrapperArray;
+    instances: packer.InstanceArray;
+    totalItems: number;
+  } {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(
+      new packer.Wrapper("大箱", 1000, 30, 30, 15, 0),
+      new packer.Wrapper("小箱", 500, 15, 15, 8, 0),
+    );
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 3, new packer.Product("商品A", 5, 5, 5));
+    instances.insert(instances.end(), 2, new packer.Product("商品B", 10, 10, 5));
+
+    return { wrappers, instances, totalItems: 5 };
+  }
+
+  /**
+   * GA効果検証用入力:
+   * Greedyのコスト/体積ヒューリスティックでは最適解に辿り着けないが、
+   * GAによるWrapper割り当て変更で改善可能なデータセット。
+   *
+   * - 平箱 (20x20x5, cost=150): cost/vol=0.075 (高い)
+   * - 縦箱 (10x10x20, cost=130): cost/vol=0.065 (安い)
+   *
+   * Greedy: 縦長アイテムを縦箱に割当（cost/vol が安いため）
+   *   → 縦箱1箱に4個しか入らず、8箱必要 = 1040
+   *
+   * GA最適解: 縦長アイテムを平箱に割当（回転で横に並べる）
+   *   → 平箱1箱に5個入り、6箱で済む = 900
+   *
+   * Repackは箱単位の比較（130 < 150）で切り替えないが、
+   * GAはグローバルな割り当て変更で総コスト削減を発見できる。
+   */
+  function buildGAEffectInputs(): {
+    wrappers: packer.WrapperArray;
+    instances: packer.InstanceArray;
+    totalItems: number;
+  } {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(
+      new packer.Wrapper("平箱", 150, 20, 20, 5, 0),
+      new packer.Wrapper("縦箱", 130, 10, 10, 20, 0),
+    );
+
+    const instances = new packer.InstanceArray();
+    // 平面アイテム: 18x18x2 → 平箱にしか入らない (18 > 10 で縦箱に入らない)
+    instances.insert(instances.end(), 10, new packer.Product("平面品", 18, 18, 2));
+    // 縦長アイテム: 4x4x18 → 両方に入る
+    //   縦箱: 4x4x18 そのまま → 2×2×1=4個/箱
+    //   平箱: 4x18x4 に回転 → 5×1×1=5個/箱
+    instances.insert(instances.end(), 30, new packer.Product("縦長品", 4, 4, 18));
+
+    return { wrappers, instances, totalItems: 40 };
+  }
+
+  /** Packerの結果から合計梱包数を返す */
+  function countPacked(result: packer.WrapperArray): number {
+    let total = 0;
+    for (let i = 0; i < result.size(); i++) {
+      total += (result.at(i) as packer.Wrapper).size();
+    }
+    return total;
+  }
+
+  /** Packerの結果から合計コストを返す */
+  function sumCost(result: packer.WrapperArray): number {
+    let total = 0;
+    for (let i = 0; i < result.size(); i++) {
+      total += (result.at(i) as packer.Wrapper).getPrice();
+    }
+    return total;
+  }
+
+  /** Packerの結果から平均充填率を返す */
+  function avgFillRate(result: packer.WrapperArray): number {
+    if (!result.fillRates || result.fillRates.length === 0) return 0;
+    const sum = result.fillRates.reduce((acc: number, e: any) => acc + e.fillRate, 0);
+    return sum / result.fillRates.length;
+  }
+
+  /** GA有効/無効の比較結果をログ出力する */
+  function logComparison(
+    label: string,
+    withGA: packer.WrapperArray,
+    withoutGA: packer.WrapperArray,
+  ): void {
+    const costGA = sumCost(withGA);
+    const costNoGA = sumCost(withoutGA);
+    const costImprovement = costNoGA > 0 ? ((costNoGA - costGA) / costNoGA) * 100 : 0;
+
+    const boxGA = withGA.size();
+    const boxNoGA = withoutGA.size();
+    const boxImprovement = boxNoGA > 0 ? ((boxNoGA - boxGA) / boxNoGA) * 100 : 0;
+
+    const fillGA = avgFillRate(withGA);
+    const fillNoGA = avgFillRate(withoutGA);
+    const fillDiff = fillGA - fillNoGA;
+
+    console.log(
+      `[${label}]\n` +
+      `  コスト: GA有効 ${costGA} / GA無効 ${costNoGA} / 改善率 ${costImprovement.toFixed(1)}%\n` +
+      `  箱数:   GA有効 ${boxGA}箱 / GA無効 ${boxNoGA}箱 / 改善率 ${boxImprovement.toFixed(1)}%\n` +
+      `  充填率: GA有効 ${(fillGA * 100).toFixed(1)}% / GA無効 ${(fillNoGA * 100).toFixed(1)}% / 差分 ${fillDiff >= 0 ? "+" : ""}${(fillDiff * 100).toFixed(1)}pt`
+    );
+  }
+
+  // --- 基本動作テスト ---
+
+  it("GA有効: 全アイテムが梱包される", () => {
+    const { wrappers, instances, totalItems } = buildLightInputs();
+    const result = new packer.Packer(wrappers, instances, {
+      isUseGeneticAlgorithm: true,
+    }).optimize();
+    expect(countPacked(result)).toBe(totalItems);
+  });
+
+  it("GA無効（デフォルト）: 全アイテムが梱包される", () => {
+    const { wrappers, instances, totalItems } = buildLightInputs();
+    const result = new packer.Packer(wrappers, instances).optimize();
+    expect(countPacked(result)).toBe(totalItems);
+  });
+
+  it("GA有効/無効ともに戻り値が WrapperArray である", () => {
+    const { wrappers, instances } = buildLightInputs();
+    const withGA = new packer.Packer(wrappers, instances, {
+      isUseGeneticAlgorithm: true,
+    }).optimize();
+    expect(withGA).toBeInstanceOf(packer.WrapperArray);
+
+    const { wrappers: w2, instances: i2 } = buildLightInputs();
+    const withoutGA = new packer.Packer(w2, i2).optimize();
+    expect(withoutGA).toBeInstanceOf(packer.WrapperArray);
+  });
+
+  it("GA有効/無効ともに fillRates が返される", () => {
+    const { wrappers, instances } = buildLightInputs();
+    const withGA = new packer.Packer(wrappers, instances, {
+      isUseGeneticAlgorithm: true,
+    }).optimize();
+    expect(withGA.fillRates).toBeDefined();
+    expect(withGA.fillRates.length).toBe(withGA.size());
+
+    const { wrappers: w2, instances: i2 } = buildLightInputs();
+    const withoutGA = new packer.Packer(w2, i2).optimize();
+    expect(withoutGA.fillRates).toBeDefined();
+    expect(withoutGA.fillRates.length).toBe(withoutGA.size());
+  });
+
+  // --- コスト比較テスト（GAの最適化効果を検証） ---
+
+  it("GA有効の合計コスト・箱数・充填率がGA無効以上である", () => {
+    const { wrappers, instances } = buildGAEffectInputs();
+    const withGA = new packer.Packer(wrappers, instances, {
+      isUseGeneticAlgorithm: true,
+    }).optimize();
+
+    const { wrappers: w2, instances: i2 } = buildGAEffectInputs();
+    const withoutGA = new packer.Packer(w2, i2).optimize();
+
+    logComparison("GA効果検証", withGA, withoutGA);
+
+    expect(sumCost(withGA)).toBeLessThanOrEqual(sumCost(withoutGA));
+    expect(withGA.size()).toBeLessThanOrEqual(withoutGA.size());
+    expect(avgFillRate(withGA)).toBeGreaterThanOrEqual(avgFillRate(withoutGA));
+  });
+
+  // --- 箱が1種類の場合はGAを使わない ---
+
+  it("箱が1種類の場合、GA有効/無効で結果が同じ", () => {
+    const wrappers1 = new packer.WrapperArray();
+    wrappers1.push(new packer.Wrapper("箱", 1000, 30, 30, 30, 0));
+    const instances1 = new packer.InstanceArray();
+    instances1.insert(instances1.end(), 5, new packer.Product("小物", 10, 10, 10));
+
+    const withGA = new packer.Packer(wrappers1, instances1, {
+      isUseGeneticAlgorithm: true,
+    }).optimize();
+
+    const wrappers2 = new packer.WrapperArray();
+    wrappers2.push(new packer.Wrapper("箱", 1000, 30, 30, 30, 0));
+    const instances2 = new packer.InstanceArray();
+    instances2.insert(instances2.end(), 5, new packer.Product("小物", 10, 10, 10));
+
+    const withoutGA = new packer.Packer(wrappers2, instances2).optimize();
+
+    expect(withGA.size()).toBe(withoutGA.size());
+    expect(countPacked(withGA)).toBe(countPacked(withoutGA));
+  });
+
+  // --- isNotUseBeamSearch との組み合わせ ---
+
+  it("GA有効 + BeamSearch無効でも全アイテムが梱包される", () => {
+    const { wrappers, instances, totalItems } = buildLightInputs();
+    const result = new packer.Packer(wrappers, instances, {
+      isUseGeneticAlgorithm: true,
+      isNotUseBeamSearch: true,
+    }).optimize();
+    expect(countPacked(result)).toBe(totalItems);
+  });
+
+  it("GA無効 + BeamSearch無効でも全アイテムが梱包される", () => {
+    const { wrappers, instances, totalItems } = buildLightInputs();
+    const result = new packer.Packer(wrappers, instances, {
+      isNotUseBeamSearch: true,
+    }).optimize();
+    expect(countPacked(result)).toBe(totalItems);
+  });
+
+  // --- 多数アイテムでの最適化効果テスト ---
+
+  it("多数の異種アイテムでGA有効時の合計コストがGA無効時以下", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(
+      new packer.Wrapper("特大箱", 1500, 60, 60, 30, 0),
+      new packer.Wrapper("大箱", 1000, 40, 40, 15, 0),
+      new packer.Wrapper("小箱", 500, 15, 15, 8, 0),
+    );
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 20, new packer.Product("商品A", 5, 5, 5));
+    instances.insert(instances.end(), 10, new packer.Product("商品B", 10, 10, 10));
+    instances.insert(instances.end(), 5, new packer.Product("商品C", 14, 14, 7));
+
+    const withGA = new packer.Packer(wrappers, instances, {
+      isUseGeneticAlgorithm: true,
+    }).optimize();
+
+    const wrappers2 = new packer.WrapperArray();
+    wrappers2.push(
+      new packer.Wrapper("特大箱", 1500, 60, 60, 30, 0),
+      new packer.Wrapper("大箱", 1000, 40, 40, 15, 0),
+      new packer.Wrapper("小箱", 500, 15, 15, 8, 0),
+    );
+    const instances2 = new packer.InstanceArray();
+    instances2.insert(instances2.end(), 20, new packer.Product("商品A", 5, 5, 5));
+    instances2.insert(instances2.end(), 10, new packer.Product("商品B", 10, 10, 10));
+    instances2.insert(instances2.end(), 5, new packer.Product("商品C", 14, 14, 7));
+
+    const withoutGA = new packer.Packer(wrappers2, instances2).optimize();
+
+    logComparison("異種アイテム", withGA, withoutGA);
+
+    expect(sumCost(withGA)).toBeLessThanOrEqual(sumCost(withoutGA));
+  });
+
+  // --- 安定モードとの組み合わせ ---
+
+  it("安定モード + GA有効で全アイテムが梱包される", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(
+      new packer.Wrapper("安定大箱", 1000, 40, 40, 15, 0, true),
+      new packer.Wrapper("安定小箱", 500, 15, 15, 8, 0, true),
+    );
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 3, new packer.Product("商品A", 10, 5, 5));
+    instances.insert(instances.end(), 3, new packer.Product("商品B", 5, 5, 5));
+
+    const result = new packer.Packer(wrappers, instances, {
+      isUseGeneticAlgorithm: true,
+    }).optimize();
+    expect(countPacked(result)).toBe(6);
+
+    for (let i = 0; i < result.size(); i++) {
+      expect((result.at(i) as packer.Wrapper).getStableMode()).toBe(true);
+    }
+  });
+
+  it("安定モード + GA無効で全アイテムが梱包される", () => {
+    const wrappers = new packer.WrapperArray();
+    wrappers.push(
+      new packer.Wrapper("安定大箱", 1000, 40, 40, 15, 0, true),
+      new packer.Wrapper("安定小箱", 500, 15, 15, 8, 0, true),
+    );
+
+    const instances = new packer.InstanceArray();
+    instances.insert(instances.end(), 3, new packer.Product("商品A", 10, 5, 5));
+    instances.insert(instances.end(), 3, new packer.Product("商品B", 5, 5, 5));
+
+    const result = new packer.Packer(wrappers, instances).optimize();
+    expect(countPacked(result)).toBe(6);
+  });
+
+  // --- デフォルトオプション ---
+
+  it("options未指定ではGA無効がデフォルト", () => {
+    const { wrappers, instances } = buildLightInputs();
+    const defaultResult = new packer.Packer(wrappers, instances).optimize();
+
+    const { wrappers: w2, instances: i2 } = buildLightInputs();
+    const explicitNoGA = new packer.Packer(w2, i2, {
+      isUseGeneticAlgorithm: false,
+    }).optimize();
+
+    // デフォルトとGA明示無効は同一のコストになるはず
+    expect(sumCost(defaultResult)).toBe(sumCost(explicitNoGA));
+  });
+});

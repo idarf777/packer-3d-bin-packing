@@ -46,10 +46,11 @@
 | `optimize()` | 最適化を実行し、結果の `WrapperArray` を返す |
 | `initGenes()` | 遺伝的アルゴリズムの初期遺伝子列（各インスタンスの割当先Wrapper）を生成する |
 | `repack(wrappers)` | パック済みWrapperを別のWrapper型に詰め替えてコスト削減を試みる |
+| `_tournamentSelect(population, tournamentSize)` | トーナメント選択。集団からランダムにtournamentSize個体を選び最良を返す |
 
 **内部動作:**
 - Wrapper型が1種類のみの場合 → `WrapperGroup` に委譲して直接最適化
-- Wrapper型が複数の場合 → `initGenes()` でコスト最小割当を行い、将来的には遺伝的アルゴリズムで進化させる（現在のJS版では未実装、C++版では実装済み）
+- Wrapper型が複数の場合 → `initGenes()` で初期個体を生成し、遺伝的アルゴリズム（交叉・突然変異・選択）で進化させる（`options.isUseGeneticAlgorithm = true` で有効化可能、デフォルト無効）
 
 ---
 
@@ -160,8 +161,8 @@
 | `constructResult()` | 遺伝子からWrapperGroupを構築し、最適化を実行してコストを計算 |
 | `getResult()` | 最適化結果のマップを返す |
 | `less(obj)` | 他の個体とのコスト比較（遺伝的アルゴリズムの適合度評価に使用） |
-
-**備考:** 現在のJavaScript版では遺伝的アルゴリズムの進化ループは未実装。`initGenes()` で生成された初期個体がそのまま最終解として使用される。
+| `mutate(wrapperArray, mutationRate)` | 突然変異した新個体を生成。各遺伝子を指定確率で収容可能な別のWrapper型にランダム変更 |
+| `crossover(partner)` | 一様交叉で2つの親から子個体を生成。各遺伝子位置で50%の確率で親A/Bを選択 |
 
 ---
 
