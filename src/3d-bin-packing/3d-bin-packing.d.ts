@@ -608,6 +608,10 @@ declare namespace bws.packer {
         protected result: std.HashMap<string, WrapperGroup>;
         private price;
         /**
+         * @brief Packing order priorities per instance (lower = packed earlier).
+         */
+        packingOrder: number[];
+        /**
          * @brief Validity of this sequence list.
          */
         private valid;

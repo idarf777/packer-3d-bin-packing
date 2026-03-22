@@ -225,7 +225,7 @@
 
 **ファイル:** `src/3d-bin-packing/3d-bin-packing.js` (L286〜L1652)
 
-**役割:** Boxologicアルゴリズム（Air Force Bin Packing）のファサードかつ実装本体。パレット（Wrapper）への荷物詰め込みを実行する中核クラス。
+**役割:** Boxologicアルゴリズム（Air Force Bin Packing）のファサードかつ実装本体。パレット（Wrapper）への荷物詰め込みを実行する中核クラス。安定モード時は標準レイヤー方式に加え、ハイトマップベースパッカーとギャップ充填ポストプロセスを併用する。
 
 **抽象化しているもの:** 「1つのコンテナに対してインスタンス群を最適配置する」という単一コンテナ問題の全解法ロジック。
 
@@ -248,7 +248,10 @@
 | `check_found()` | 検索結果を反映し、scrapリストを更新 |
 | `volume_check()` | 100%充填達成チェック |
 | `find_layer(thickness)` | 残りスペースに対する次のレイヤー厚さを決定 |
-| `report_results()` | 最良解で再パッキングし座標変換を適用 |
+| `report_results()` | 最良解で再パッキングし座標変換を適用。安定モード時は `fillGaps()` を実行 |
+| `fillGaps()` | レイヤー間の隙間に未パックBoxを後処理で配置（安定モード時） |
+| `overlapsAnyPacked(x, y, z, w, h, l)` | 提案配置が既存パック済みBoxとAABB重複するか判定 |
+| `simulatePlacementWithHeightmap()` | ハイトマップベースのパッキングシミュレーション（安定モード用） |
 | `write_box_file()` | パレット向きに応じた座標変換 |
 
 ---
@@ -356,4 +359,4 @@
 
 **戻り値:** 支持率（0.0〜1.0）
 
-安定モードでのパッキング中（`Boxologic.check_stability`）とデコード後のWrap生成（`Boxologic.decode`）の両方で使用される。外部テストコードからも `packer.calculateSupportRatio` として利用可能。
+安定モードでのパッキング中（`Boxologic.check_stability`）、ハイトマップベースパッカー（`Boxologic.simulatePlacementWithHeightmap`）、ギャップ充填（`Boxologic.fillGaps`）、およびデコード後のWrap生成（`Boxologic.decode`）で使用される。外部テストコードからも `packer.calculateSupportRatio` として利用可能。
