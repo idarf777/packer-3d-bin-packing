@@ -1133,14 +1133,13 @@ describe("fillRates", () => {
   });
 
   /**
-   * 安定モードでは安定性制約により 2 箱に分かれる。
+   * 安定モードでも 3 商品すべてが 1 箱に収まる。
    *
-   * 箱1: 商品B (600,000) + 商品C (150,000) = 750,000
-   *   充填率 = 750,000 / 6,000,000 = 0.125
-   * 箱2: 商品A (600,000)
-   *   充填率 = 600,000 / 6,000,000 = 0.1
+   * analyze_box の安定性チェック修正＋ギャップ充填により、
+   * 高さの異なる商品を適切に配置できるようになった。
    *
-   * 全箱の合計体積は通常モードと同じ 1,350,000。
+   * 箱1: 商品A (600,000) + 商品B (600,000) + 商品C (150,000) = 1,350,000
+   *   充填率 = 1,350,000 / 6,000,000 = 0.225
    */
   it("安定モード: 充填率の数値が正確である", () => {
     const wrappers = new packer.WrapperArray();
@@ -1153,8 +1152,8 @@ describe("fillRates", () => {
 
     const result = new packer.Packer(wrappers, instances).optimize();
 
-    // 安定性制約により 2 箱に分かれる
-    expect(result.size()).toBe(2);
+    // 安定性を満たしつつ 1 箱に収まる
+    expect(result.size()).toBe(1);
     for (let i = 0; i < result.size(); i++) {
       expect((result.at(i) as packer.Wrapper).getStableMode()).toBe(true);
     }
@@ -1175,15 +1174,10 @@ describe("fillRates", () => {
       expect(entry.containableVolume).toBe(6_000_000);
     }
 
-    // 箱1: 商品B + 商品C → 充填率 0.125
-    expect(result.fillRates[0].packedVolume).toBe(750_000);
-    expect(result.fillRates[0].packedCount).toBe(2);
-    expect(result.fillRates[0].fillRate).toBeCloseTo(0.125, 10);
-
-    // 箱2: 商品A → 充填率 0.1
-    expect(result.fillRates[1].packedVolume).toBe(600_000);
-    expect(result.fillRates[1].packedCount).toBe(1);
-    expect(result.fillRates[1].fillRate).toBeCloseTo(0.1, 10);
+    // 1 箱: 全商品 → 充填率 0.225
+    expect(result.fillRates[0].packedVolume).toBe(1_350_000);
+    expect(result.fillRates[0].packedCount).toBe(3);
+    expect(result.fillRates[0].fillRate).toBeCloseTo(0.225, 10);
   });
 });
 
