@@ -608,6 +608,10 @@ declare namespace bws.packer {
         protected result: std.HashMap<string, WrapperGroup>;
         private price;
         /**
+         * @brief Packing order priorities per instance (lower = packed earlier).
+         */
+        packingOrder: number[];
+        /**
          * @brief Validity of this sequence list.
          */
         private valid;
@@ -629,6 +633,21 @@ declare namespace bws.packer {
          */
         getResult(): std.HashMap<string, WrapperGroup>;
         less(obj: GAWrapperArray): boolean;
+        /**
+         * @brief Create a mutated copy of this gene array.
+         *
+         * @param wrapperArray Available wrapper types.
+         * @param mutationRate Probability of each gene being mutated (0.0 ~ 1.0).
+         * @return A new GAWrapperArray with mutations applied.
+         */
+        mutate(wrapperArray: WrapperArray, mutationRate: number): GAWrapperArray;
+        /**
+         * @brief Create a child by uniform crossover of two parents.
+         *
+         * @param partner The other parent GAWrapperArray.
+         * @return A new GAWrapperArray combining genes from both parents.
+         */
+        crossover(partner: GAWrapperArray): GAWrapperArray;
     }
 }
 declare namespace bws.packer {
@@ -713,6 +732,12 @@ declare namespace bws.packer {
      */
     interface PackerOptions {
         isNotUseBeamSearch?: boolean;
+        /**
+         * If true, enables the genetic algorithm for multi-wrapper optimization.
+         * When disabled, the initial greedy assignment is used as the final solution.
+         * @default false
+         */
+        isUseGeneticAlgorithm?: boolean;
     }
     class Packer extends protocol.Entity {
         /**

@@ -8,17 +8,35 @@
 
 ## 目次
 
-1. [全体概要](#1-全体概要)
-2. [処理の大まかな流れ](#2-処理の大まかな流れ)
-3. [サブアルゴリズム](#3-サブアルゴリズム)
-   - [3.1 Air Force Bin Packing（レイヤーベースヒューリスティック）](#31-air-force-bin-packingレイヤーベースヒューリスティック)
-   - [3.2 ビームサーチ強化貪欲法](#32-ビームサーチ強化貪欲法)
-   - [3.3 遺伝的アルゴリズム（GA）によるWrapper選択最適化](#33-遺伝的アルゴリズムgaによるwrapper選択最適化)
-   - [3.4 Repack（詰め替え最適化）](#34-repack詰め替え最適化)
-   - [3.5 回転モードシステム](#35-回転モードシステム)
-   - [3.6 安定モード（Stable Mode）](#36-安定モードstable-mode)
-4. [データ構造](#4-データ構造)
-5. [座標系とパレット向き](#5-座標系とパレット向き)
+- [3D ビンパッキング アルゴリズム解説](#3d-ビンパッキング-アルゴリズム解説)
+  - [目次](#目次)
+  - [1. 全体概要](#1-全体概要)
+  - [2. 処理の大まかな流れ](#2-処理の大まかな流れ)
+    - [単一コンテナパッキングの流れ（WrapperGroup.optimize → Boxologic.pack）](#単一コンテナパッキングの流れwrappergroupoptimize--boxologicpack)
+  - [3. サブアルゴリズム](#3-サブアルゴリズム)
+    - [3.1 Air Force Bin Packing（レイヤーベースヒューリスティック）](#31-air-force-bin-packingレイヤーベースヒューリスティック)
+      - [レイヤー構築 (`construct_layers`)](#レイヤー構築-construct_layers)
+      - [レイヤー充填 (`pack_layer`)](#レイヤー充填-pack_layer)
+      - [5つの配置状況 (Situations)](#5つの配置状況-situations)
+      - [パレット向き (`iterate_orientations`)](#パレット向き-iterate_orientations)
+    - [3.2 ビームサーチ強化貪欲法](#32-ビームサーチ強化貪欲法)
+    - [3.3 遺伝的アルゴリズム（GA）によるWrapper選択最適化](#33-遺伝的アルゴリズムgaによるwrapper選択最適化)
+    - [3.4 Repack（詰め替え最適化）](#34-repack詰め替え最適化)
+    - [3.5 回転モードシステム](#35-回転モードシステム)
+    - [3.6 安定モード（Stable Mode）](#36-安定モードstable-mode)
+      - [安定性チェック (`check_stability`)](#安定性チェック-check_stability)
+      - [ギャップ充填 (`fillGaps`)](#ギャップ充填-fillgaps)
+    - [3.7 ハイトマップベースパッカー](#37-ハイトマップベースパッカー)
+      - [レイヤー方式の限界](#レイヤー方式の限界)
+      - [ハイトマップ方式のアルゴリズム](#ハイトマップ方式のアルゴリズム)
+      - [レイヤー方式との比較](#レイヤー方式との比較)
+  - [4. データ構造](#4-データ構造)
+    - [レイヤーマップ (`layer_map`: HashMap)](#レイヤーマップ-layer_map-hashmap)
+    - [Scrapリスト (`scrap_list`: 双方向連結リスト)](#scrapリスト-scrap_list-双方向連結リスト)
+    - [Boxアレイ (`box_array`: Vector)](#boxアレイ-box_array-vector)
+  - [5. 座標系とパレット向き](#5-座標系とパレット向き)
+    - [座標系](#座標系)
+    - [パレットの6つの向き](#パレットの6つの向き)
 
 ---
 
@@ -40,6 +58,8 @@
 | Repack | 別のWrapper型への詰め替えによるコスト削減 | [`Packer.repack()`](./classes.md#packer) |
 | 回転モードシステム | 荷物の回転制約の制御 | [`Product.setRotationMode()`](./classes.md#product) |
 | 安定モード | 積み上げ時のはみ出し防止 | [`Boxologic.check_stability()`](./classes.md#boxologic) |
+| ハイトマップベースパッカー | 安定モード時の混合高さ対応 | [`Boxologic.simulatePlacementWithHeightmap()`](./classes.md#boxologic) |
+| ギャップ充填 | レイヤー間の隙間を後処理で埋める | [`Boxologic.fillGaps()`](./classes.md#boxologic) |
 
 ---
 
@@ -93,6 +113,8 @@ WrapperGroup.optimize()
             │           ├─ iterate_layer(thickness)
             │           │   ├─ enhancedGreedyWithBeamSearch()  ← ビームサーチ版
             │           │   │   ├─ simulatePlacement() × 3候補
+            │           │   │   ├─ simulatePlacementByHeightGroups() ← 安定モード時
+            │           │   │   ├─ simulatePlacementWithHeightmap()  ← 安定モード時
             │           │   │   ├─ スコアリング → 最良候補を選択
             │           │   │   └─ applyPlacementSolution()
             │           │   │
@@ -108,6 +130,7 @@ WrapperGroup.optimize()
             │           └─ 最良体積なら best_solution として記録
             │
             ├─ report_results()  ← 最良解で再パッキング＋座標変換
+            │   └─ fillGaps()  ← 安定モード時、レイヤー間の隙間を後処理で充填
             │
             └─ decode()  ← boxologic内部形式 → Packerのデータに逆変換
                 └─ 各Wrapの supportRatio を計算
@@ -195,14 +218,17 @@ Scrapリスト（連結リスト）を使って、レイヤー内の「前面か
    - `simulateLayerPacking()` でレイヤーを繰り返し充填し、パック数・効率・安定性を計測
      - 各位置に対して `findBestBoxForPosition()` で最適なBoxを選択
    - 結果を記録して元の状態に復元
-3. 多基準スコアリングで最良候補を選択：
+3. **安定モード時の追加候補:**
+   - `simulatePlacementByHeightGroups()` — 高さグループ別レイヤー戦略（同じ高さのBoxだけでレイヤーを構成）
+   - `simulatePlacementWithHeightmap()` — ハイトマップベースパッカー（[3.7節](#37-ハイトマップベースパッカー) を参照）
+4. 多基準スコアリングで最良候補を選択：
    ```
    score = totalPacked × 1000      ← パック個数（最重要）
          + spaceEfficiency × 100   ← 空間効率
          + orientationBonus         ← Y軸回転の優先向き
          + stabilityScore × 200    ← 安定性（安定モード時のみ）
    ```
-4. 最良候補の状態を `applyPlacementSolution()` で適用する
+5. 最良候補の状態を適用する
 
 **フォールバック:** 有効な候補が1つもない場合は標準のレイヤーベースアルゴリズムに委譲する。
 
@@ -219,15 +245,29 @@ Scrapリスト（連結リスト）を使って、レイヤー内の「前面か
 - **適合度:** 全Wrapperの合計コスト（`price`）が低いほど適合度が高い
 - **評価:** `constructResult()` で WrapperGroup 毎に最適化を実行し、合計コストを算出
 
-**現在の実装状況:**
+**進化ループ:**
 
-JS版では遺伝的アルゴリズムの進化ループ（交叉・突然変異・選択）は**未実装**である。代わりに `initGenes()` で生成された初期個体（＝単位体積あたりコスト最小のWrapper型への貪欲割当）がそのまま最終解として使用される。C++版では完全に実装されている。
+デフォルトで無効。`options.isUseGeneticAlgorithm = true` で有効化できる。
 
-```javascript
-// IN JAVA_SCRIPT VERSION, GENETIC_ALGORITHM IS NOT IMPLEMENTED YET.
-// HOWEVER, IN C++ VERSION, IT IS FULLY SUPPORTED
-// IT WILL BE SUPPORTED SOON
-```
+| パラメータ | 値 | 説明 |
+|-----------|-----|------|
+| 集団サイズ | 10 | 初期個体 + 変異で生成 |
+| 世代数 | 20（最大） | 早期収束で打ち切り可能 |
+| 突然変異率 | 0.15 | 各遺伝子が変異する確率 |
+| トーナメントサイズ | 3 | 選択圧の制御 |
+| 停滞打ち切り | 5世代 | 改善がなければ終了 |
+
+**動作:**
+1. `initGenes()` で初期個体（貪欲割当）を生成
+2. 初期個体を変異率0.3で変異させ、集団サイズ分の初期集団を構築
+3. 各世代で以下を繰り返す：
+   - **エリート保存**: 最良個体を次世代にそのまま引き継ぐ
+   - **トーナメント選択**: 集団からランダムに3個体を選び、最良を親とする
+   - **一様交叉 (`crossover`)**: 各遺伝子位置で50%の確率で親A/Bの遺伝子を選択
+   - **突然変異 (`mutate`)**: 各遺伝子位置で15%の確率で、収容可能な別のWrapper型にランダム変更
+   - **評価**: `constructResult()` で各個体のコストを算出
+4. 5世代連続で改善がなければ早期終了
+5. 最良個体を最終解として採用
 
 **初期個体の生成 (`initGenes`):**
 1. 各Wrapper型のWrapperGroupを作成
@@ -275,7 +315,9 @@ JS版では遺伝的アルゴリズムの進化ループ（交叉・突然変異
 
 **制約条件:**
 - Y=0（底面）の配置は常に安定
-- Y>0の配置は、底面（XZ面）の **70%以上** が下の荷物に支えられていなければならない
+- Y>0の配置は、底面（XZ面）の **70%以上** が下の荷物に支えられていなければならない（ `MIN_SUPPORT_RATIO = 0.7` ）
+
+#### 安定性チェック (`check_stability`)
 
 **支持率の計算 (`calculateSupportRatio`):**
 ```
@@ -289,10 +331,129 @@ JS版では遺伝的アルゴリズムの進化ループ（交叉・突然変異
 支持率 = 重なり面積の合計 / 配置する箱のXZ面積
 ```
 
-**アルゴリズムへの影響:**
-- `analyze_box()`: 安定性チェックに不合格な配置を除外
+1. 配置位置 (x, z) とサイズ (w, l) に対して、XZ平面で重なるパック済みBoxのうち、上面が配置Y座標に一致するものを収集
+2. `calculateSupportRatio()` で重なり面積の合計を算出
+3. 支持率が `MIN_SUPPORT_RATIO` (0.7) 未満であれば配置を拒否
+
+**`analyze_box()` での安定性チェック:** レイヤーベースの `pack_layer()` は全Boxをレイヤー基底高さ（`packed_layout_height`）に配置するため、`analyze_box()` は配置Y座標として `packed_layout_height` を使用する。これにより、レイヤー厚み内の仮想的な浮遊位置ではなく、実際の配置位置で安定性が検証される。
+
+#### ギャップ充填 (`fillGaps`)
+
+レイヤーベースのアルゴリズムでは、各レイヤーの厚さは最も背の高いBoxに合わせて設定される。このため、背の低いBoxの上に隙間が生じる場合がある。
+
+```
+  レイヤー厚 = 40mm
+  ┌──────────┬──────────┐
+  │ Box A    │ デッド   │ ← Box B (25mm) の上に15mmの隙間
+  │ 40mm     │ スペース │
+  │          ├──────────┤
+  │          │ Box B    │
+  │          │ 25mm     │
+  └──────────┴──────────┘
+```
+
+`fillGaps()` は `report_results()` 内で安定モード時に呼ばれるポストプロセスで、この隙間を埋める：
+
+1. パック済みBoxの全上面位置を候補リストとして収集
+2. 各未パックBoxについて、全候補位置 × 全有効回転で配置を試行
+3. パレット境界内、安定性チェック合格（`check_stability`）、重複なし（`overlapsAnyPacked`）の場合に配置
+4. 配置が発生した場合、新たな上面位置が生まれるため `while(changed)` ループで繰り返し
+
+**アルゴリズムへの影響（まとめ）:**
+- `analyze_box()`: 安定性チェックに不合格な配置を除外（実際の配置Y座標で検証）
 - `simulateLayerPacking()`: ビームサーチ中も安定性を検証
 - `encode()`: 安定モード時、`"all"` 回転を自動的に `"yAxis"` に制限（Y軸を固定しないと高さ方向の積み上げが不安定になるため）
+- `report_results()`: 安定モード時、レイヤーパッキング後に `fillGaps()` を実行
+- `enhancedGreedyWithBeamSearch()`: 安定モード時、ハイトマップベースパッカーを追加候補として評価
+
+---
+
+### 3.7 ハイトマップベースパッカー
+
+#### レイヤー方式の限界
+
+標準のレイヤーベースアルゴリズムは、パレット全体のフロアを1つの均一厚さのレイヤーとして扱う。このアプローチには以下の構造的な問題がある：
+
+```
+  レイヤー方式：フロア全体が同じ厚さ
+  ┌─────────────────────────────┐
+  │       レイヤー2 (40mm)       │ ← 次のレイヤーは140mm(=100+40)から開始
+  ├──────────┬──────────────────┤
+  │          │ 未使用空間 75mm  │ ← 25mmのBoxの上に75mmのデッドスペース
+  │ Box A    ├──────────────────┤
+  │ 100mm    │ Box B  25mm     │
+  │          ├──────────────────┤
+  │          │ 未使用空間       │
+  └──────────┴──────────────────┘
+    レイヤー1の厚さ = 100mm（最大Boxに合わせる）
+```
+
+- 高さの異なるBoxが混在すると、背の低いBoxの上に大きなデッドスペースが生じる
+- `fillGaps()` で後処理的に埋めることはできるが、最適な配置順序が保証されない
+- 安定モードでは特に問題となる（支持面の確保が必要なため、隙間が増えるとパック率が低下）
+
+#### ハイトマップ方式のアルゴリズム
+
+`simulatePlacementWithHeightmap()` は、フロア全体を均一レイヤーに分割する代わりに、**Extreme Points（極点）**アプローチで各Boxの上面を個別に追跡する。
+
+```
+  ハイトマップ方式：個々のBoxの上面を追跡
+  ┌──────────┬──────────────────┐
+  │ Box C    │ Box D  25mm      │ ← baseY=25で安定配置
+  │ 40mm     ├──────────────────┤
+  │          │ Box B  25mm      │
+  ├──────────┼──────────────────┤
+  │ Box A 100│ Box E  50mm      │ ← baseY=50で安定配置
+  │          ├──────────────────┤
+  │          │ Box F  50mm      │ ← baseY=0（床面）
+  └──────────┴──────────────────┘
+    各位置のbaseYが独立に計算される
+```
+
+**手順:**
+
+1. **候補位置の初期化:** `candidateXZ = [{ x: 0, z: 0 }]`（パレット左奥隅）
+2. **配置ループ（最大 box_array.size() 回）:**
+   1. 全候補位置 × 全未パックBox × 全有効回転 を走査
+   2. 各 `(x, z)` について **baseY** を動的に計算:
+      ```
+      baseY = max{ (pk.coy + pk.layout_height) |
+                   pk はパック済みBox かつ XZ平面で (x, z, w, l) と重なる }
+      ```
+      重なるBoxがなければ `baseY = 0`（床面）
+   3. 配置検証:
+      - `x + w ≤ pallet.layout_width`（X方向境界）
+      - `z + l ≤ pallet.layout_length`（Z方向境界）
+      - `baseY + h ≤ pallet.layout_height`（Y方向境界）
+      - `baseY > 0` の場合、`check_stability(x, z, w, l, baseY)` で支持率≥70%を確認
+      - `overlapsAnyPacked(x, baseY, z, w, h, l)` で既存Box との重複なしを確認
+   4. **スコアリング:**
+      ```
+      score = -baseY × 100000    ← 底面に近い位置を優先（Bottom-Fill）
+              - z × 1000         ← 奥側（Z=0端）を優先
+              - x × 100          ← 左側（X=0端）を優先
+              + volume            ← 大きいBoxを優先
+      ```
+   5. 最高スコアの `(候補位置, Box, 回転)` を配置し、`is_packed = true` に設定
+   6. **新しい候補位置を生成:**
+      ```
+      candidateXZ.push({ x: x + w, z: z })   ← 右端
+      candidateXZ.push({ x: x,     z: z + l }) ← 前端
+      ```
+3. 配置不可能になったら（`bestPlacement == null`）ループ終了
+
+**候補結果のフォーマット:** 他のビームサーチ候補（`simulatePlacement`、`simulatePlacementByHeightGroups`）と同じ形式で返される。全候補の中からスコアリングで最良のものが選択される。
+
+#### レイヤー方式との比較
+
+| 特性 | レイヤー方式 | ハイトマップ方式 |
+|------|-------------|------------------|
+| 高さ管理 | フロア全体で均一レイヤー厚 | 個々のBoxの上面を個別に追跡 |
+| 異なる高さのBox混在 | 短いBoxの上にデッドスペース | baseYが個別に算出されるため隙間が最小化 |
+| 安定性チェック | レイヤーベースのY座標（`packed_layout_height`） | 実際の配置Y座標（`baseY`） |
+| 候補位置の生成 | Scrapリストの最小Z点 | Extreme Points（Box右端・前端） |
+| 計算量 | O(boxes × orientations) per position | O(positions × boxes × orientations × packed) per iteration |
+| 適用場面 | 均一高さの荷物に最適 | 混合高さの荷物に有効（安定モード時） |
 
 ---
 

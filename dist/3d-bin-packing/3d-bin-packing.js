@@ -353,6 +353,9 @@ class Boxologic {
     decode() {
         this.wrapper.clear();
         this.leftInstances.clear();
+        // Collect all packed wraps first, then sort by Y so lower items
+        // are pushed before upper items (needed for support ratio calculation)
+        var packedWraps = [];
         for (var i = 0; i < this.box_array.size(); i++) {
             var instance = this.instanceArray.at(i);
             var box = this.box_array.at(i);
@@ -361,30 +364,35 @@ class Boxologic {
                 wrap.estimateOrientation(box.layout_width, box.layout_height, box.layout_length);
                 if (this.wrapper.getThickness() != 0)
                     wrap.setPosition(wrap.getX() + this.wrapper.getThickness(), wrap.getY() + this.wrapper.getThickness(), wrap.getZ() + this.wrapper.getThickness());
-                // Calculate support ratio for this wrap
-                var supportingBoxes = [];
-                var wrapY = wrap.getY();
-                for (var j = 0; j < this.wrapper.size(); j++) {
-                    var existingWrap = this.wrapper.at(j);
-                    var lowerTop = existingWrap.getY() + existingWrap.getLayoutHeight();
-                    // Check if the existing wrap is directly below this wrap (within 0.01 tolerance)
-                    if (Math.abs(lowerTop - wrapY) < 0.01) {
-                        supportingBoxes.push({
-                            x1: existingWrap.getX(),
-                            x2: existingWrap.getX() + existingWrap.getLayoutWidth(),
-                            z1: existingWrap.getZ(),
-                            z2: existingWrap.getZ() + existingWrap.getLength()
-                        });
-                    }
-                }
-                var supportRatio = calculateSupportRatio(wrap.getX(), wrap.getZ(), wrap.getLayoutWidth(), wrap.getLength(), supportingBoxes);
-                wrap.setSupportRatio(supportRatio);
-                this.wrapper.push_back(wrap);
+                packedWraps.push(wrap);
             }
             else {
                 // NOT WRAPED INSTANCES BY LACK OF VOLUME
                 this.leftInstances.push_back(instance);
             }
+        }
+        // Sort by Y ascending so supports are always available before the upper boxes
+        packedWraps.sort(function (a, b) { return a.getY() - b.getY(); });
+        for (var k = 0; k < packedWraps.length; k++) {
+            var wrap = packedWraps[k];
+            // Calculate support ratio for this wrap
+            var supportingBoxes = [];
+            var wrapY = wrap.getY();
+            for (var j = 0; j < this.wrapper.size(); j++) {
+                var existingWrap = this.wrapper.at(j);
+                var lowerTop = existingWrap.getY() + existingWrap.getLayoutHeight();
+                if (Math.abs(lowerTop - wrapY) < 0.01) {
+                    supportingBoxes.push({
+                        x1: existingWrap.getX(),
+                        x2: existingWrap.getX() + existingWrap.getLayoutWidth(),
+                        z1: existingWrap.getZ(),
+                        z2: existingWrap.getZ() + existingWrap.getLength()
+                    });
+                }
+            }
+            var supportRatio = calculateSupportRatio(wrap.getX(), wrap.getZ(), wrap.getLayoutWidth(), wrap.getLength(), supportingBoxes);
+            wrap.setSupportRatio(supportRatio);
+            this.wrapper.push_back(wrap);
         }
     }
     /* ===========================================================
@@ -469,11 +477,29 @@ class Boxologic {
      * @param thickness Thickness of the iterating layer.
      */
     iterate_layer(thickness) {
-        // ENHANCED GREEDY: Use beam search to avoid local optima
-        // Beam search now supports stable mode with integrated stability checks
-        if (!this.options.isNotUseBeamSearch && this.enhancedGreedyWithBeamSearch()) {
-            return; // Use enhanced greedy algorithm
+        var beamSearchSucceeded = false;
+        var beamPackedVolume = 0;
+        var beamBoxStates = [];
+        // ENHANCED GREEDY: Try beam search first
+        if (!this.options.isNotUseBeamSearch) {
+            if (this.enhancedGreedyWithBeamSearch()) {
+                beamSearchSucceeded = true;
+                beamPackedVolume = this.packed_volume;
+                for (var bi = 0; bi < this.box_array.size(); bi++) {
+                    var bbox = this.box_array.at(bi);
+                    beamBoxStates.push({
+                        is_packed: bbox.is_packed,
+                        cox: bbox.cox,
+                        coy: bbox.coy,
+                        coz: bbox.coz,
+                        layout_width: bbox.layout_width,
+                        layout_height: bbox.layout_height,
+                        layout_length: bbox.layout_length
+                    });
+                }
+            }
         }
+        // STANDARD BOXOLOGIC: Always try standard algorithm too
         // INIT PACKED
         this.packing = true;
         this.packed_volume = 0.0;
@@ -514,6 +540,21 @@ class Boxologic {
             // CALL FIND_LAYER
             this.find_layer(this.remain_layout_height);
         } while (this.packing);
+        // Compare: use beam search result if it packed more volume
+        if (beamSearchSucceeded && beamPackedVolume > this.packed_volume) {
+            this.packed_volume = beamPackedVolume;
+            for (var ri = 0; ri < this.box_array.size(); ri++) {
+                var rbox = this.box_array.at(ri);
+                var saved = beamBoxStates[ri];
+                rbox.is_packed = saved.is_packed;
+                rbox.cox = saved.cox;
+                rbox.coy = saved.coy;
+                rbox.coz = saved.coz;
+                rbox.layout_width = saved.layout_width;
+                rbox.layout_height = saved.layout_height;
+                rbox.layout_length = saved.layout_length;
+            }
+        }
     }
     /**
      * <p> Enhanced greedy algorithm with beam search to avoid local optima </p>
@@ -529,6 +570,18 @@ class Boxologic {
             var candidate = this.simulatePlacement(layerThickness);
             if (candidate && candidate.totalPacked > 0) {
                 candidates.push(candidate);
+            }
+        }
+        // Plan B: Add height-group-based layer strategy as an additional candidate
+        if (this.stableMode) {
+            var heightGroupCandidate = this.simulatePlacementByHeightGroups();
+            if (heightGroupCandidate && heightGroupCandidate.totalPacked > 0) {
+                candidates.push(heightGroupCandidate);
+            }
+            // Plan C: Heightmap-based packer — tracks per-product surfaces
+            var heightmapCandidate = this.simulatePlacementWithHeightmap();
+            if (heightmapCandidate && heightmapCandidate.totalPacked > 0) {
+                candidates.push(heightmapCandidate);
             }
         }
         if (candidates.length === 0) {
@@ -650,21 +703,38 @@ class Boxologic {
         var stablePlacements = 0;
         var currentX = 0;
         var currentZ = 0;
+        var rowMaxLength = 0;
         while (currentX < this.pallet.layout_width && currentZ < this.remain_layout_length) {
             var bestBox = this.findBestBoxForPosition(currentX, currentZ);
-            if (!bestBox)
+            if (!bestBox) {
+                // No box fits at this X position - advance to next Z row
+                if (rowMaxLength > 0) {
+                    currentX = 0;
+                    currentZ += rowMaxLength;
+                    rowMaxLength = 0;
+                    continue;
+                }
                 break;
+            }
             // In stable mode, verify stability before placing
             if (this.stableMode) {
                 var isStable = this.check_stability(currentX, currentZ, bestBox.width, bestBox.length, this.packed_layout_height);
                 if (!isStable) {
-                    // Try advancing past this position without placing
-                    currentX += 1;
-                    if (currentX >= this.pallet.layout_width) {
-                        currentX = 0;
-                        currentZ += 1;
+                    // Plan A: Try finding an alternative box that IS stable at this position
+                    var altBox = this.findStableBoxForPosition(currentX, currentZ);
+                    if (altBox) {
+                        bestBox = altBox;
                     }
-                    continue;
+                    else {
+                        // No stable box fits, advance position
+                        currentX += 1;
+                        if (currentX >= this.pallet.layout_width) {
+                            currentX = 0;
+                            currentZ += rowMaxLength > 0 ? rowMaxLength : 1;
+                            rowMaxLength = 0;
+                        }
+                        continue;
+                    }
                 }
                 stablePlacements++;
             }
@@ -681,15 +751,400 @@ class Boxologic {
             bestBox.box.is_packed = true;
             this.packed_volume += bestBox.box.volume;
             packedInLayer++;
+            // Track the max length in this row for Z advancement
+            if (bestBox.length > rowMaxLength) {
+                rowMaxLength = bestBox.length;
+            }
             // Advance in X, then wrap to next Z row
             currentX += bestBox.width;
             if (currentX >= this.pallet.layout_width) {
                 currentX = 0;
-                currentZ += bestBox.length;
+                currentZ += rowMaxLength;
+                rowMaxLength = 0;
             }
         }
         this.packed_layout_height += this.layer_thickness;
         return { packed: packedInLayer, stablePlacements: stablePlacements };
+    }
+    /**
+     * <p> Find the best box that is stable at the given position (Plan A). </p>
+     * <p> Like findBestBoxForPosition but integrates stability checks into scoring. </p>
+     */
+    findStableBoxForPosition(x, z) {
+        var availableWidth = this.pallet.layout_width - x;
+        var availableLength = this.remain_layout_length - z;
+        var availableHeight = this.layer_thickness;
+        var bestFit = null;
+        var bestScore = -Infinity;
+        for (var i = 0; i < this.box_array.size(); i++) {
+            var box = this.box_array.at(i);
+            if (box.is_packed)
+                continue;
+            var orientations = this.getValidOrientations(box);
+            for (var j = 0; j < orientations.length; j++) {
+                var orient = orientations[j];
+                if (orient.width <= availableWidth &&
+                    orient.height <= availableHeight &&
+                    orient.length <= availableLength) {
+                    // Only consider placements that pass stability check
+                    if (!this.check_stability(x, z, orient.width, orient.length, this.packed_layout_height)) {
+                        continue;
+                    }
+                    var score = 100 - (availableWidth - orient.width) - (availableLength - orient.length);
+                    if (box.rotationMode === "yAxis" && orient.width > orient.length) {
+                        score += 50;
+                    }
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestFit = {
+                            box: box,
+                            width: orient.width,
+                            height: orient.height,
+                            length: orient.length
+                        };
+                    }
+                }
+            }
+        }
+        return bestFit;
+    }
+    /**
+     * <p> Simulate placement using height-group-based layers (Plan B). </p>
+     * <p> Groups boxes by height dimension and packs each group as a separate layer, </p>
+     * <p> ensuring uniform height within layers for consistent stability support. </p>
+     */
+    simulatePlacementByHeightGroups() {
+        // Save current state for rollback
+        var savedBoxStates = [];
+        for (var i = 0; i < this.box_array.size(); i++) {
+            var box = this.box_array.at(i);
+            savedBoxStates.push({
+                is_packed: box.is_packed,
+                cox: box.cox, coy: box.coy, coz: box.coz,
+                layout_width: box.layout_width,
+                layout_height: box.layout_height,
+                layout_length: box.layout_length
+            });
+        }
+        // Reset state
+        this.packing = true;
+        this.packed_volume = 0.0;
+        this.packed_layout_height = 0;
+        this.remain_layout_height = this.pallet.layout_height;
+        this.remain_layout_length = this.pallet.layout_length;
+        for (var ui = 0; ui < this.box_array.size(); ui++)
+            this.box_array.at(ui).is_packed = false;
+        // Group box indices by height
+        var heightGroups = {};
+        for (var i = 0; i < this.box_array.size(); i++) {
+            var box = this.box_array.at(i);
+            var h = box.height;
+            if (!heightGroups[h])
+                heightGroups[h] = [];
+            heightGroups[h].push(i);
+        }
+        // Sort heights descending (larger heights first for stable base)
+        var sortedHeights = Object.keys(heightGroups).map(Number).sort(function (a, b) { return b - a; });
+        var totalPacked = 0;
+        var stabilityScore = 0;
+        var totalPlacements = 0;
+        for (var hi = 0; hi < sortedHeights.length; hi++) {
+            var groupHeight = sortedHeights[hi];
+            if (this.remain_layout_height < groupHeight)
+                continue;
+            this.layer_thickness = groupHeight;
+            // Pack only boxes from this height group, may use multiple layers of the same height
+            var keepPacking = true;
+            while (keepPacking && this.remain_layout_height >= groupHeight) {
+                var layerResult = this.simulateLayerPackingForGroup(heightGroups[groupHeight]);
+                if (layerResult.packed > 0) {
+                    totalPacked += layerResult.packed;
+                    stabilityScore += layerResult.stablePlacements;
+                    totalPlacements += layerResult.packed;
+                    this.packed_layout_height += groupHeight;
+                    this.remain_layout_height -= groupHeight;
+                }
+                else {
+                    keepPacking = false;
+                }
+            }
+        }
+        var spaceEfficiency = totalPacked > 0 ?
+            (this.packed_volume / (this.pallet.layout_width * this.pallet.layout_height * this.pallet.layout_length)) : 0;
+        var orientationBonus = 0;
+        for (var i = 0; i < this.box_array.size(); i++) {
+            var box = this.box_array.at(i);
+            if (box.is_packed && box.rotationMode === "yAxis") {
+                if (box.layout_width > box.layout_length) {
+                    orientationBonus += 10;
+                }
+            }
+        }
+        var result = {
+            layerThickness: sortedHeights[0] || 0,
+            totalPacked: totalPacked,
+            spaceEfficiency: spaceEfficiency,
+            orientationBonus: orientationBonus,
+            stabilityScore: totalPlacements > 0 ? stabilityScore / totalPlacements : 0,
+            boxStates: []
+        };
+        for (var i = 0; i < this.box_array.size(); i++) {
+            var box = this.box_array.at(i);
+            result.boxStates.push({
+                is_packed: box.is_packed,
+                cox: box.cox, coy: box.coy, coz: box.coz,
+                layout_width: box.layout_width,
+                layout_height: box.layout_height,
+                layout_length: box.layout_length
+            });
+        }
+        // Restore original state
+        for (var i = 0; i < this.box_array.size(); i++) {
+            var box = this.box_array.at(i);
+            var saved = savedBoxStates[i];
+            box.is_packed = saved.is_packed;
+            box.cox = saved.cox;
+            box.coy = saved.coy;
+            box.coz = saved.coz;
+            box.layout_width = saved.layout_width;
+            box.layout_height = saved.layout_height;
+            box.layout_length = saved.layout_length;
+        }
+        return result;
+    }
+    /**
+     * <p> Simulate packing for a single layer using only boxes from the specified group. </p>
+     */
+    simulateLayerPackingForGroup(groupIndices) {
+        var packedInLayer = 0;
+        var stablePlacements = 0;
+        var currentX = 0;
+        var currentZ = 0;
+        var rowMaxLength = 0;
+        while (currentX < this.pallet.layout_width && currentZ < this.remain_layout_length) {
+            var bestFit = null;
+            var bestScore = -Infinity;
+            // Only consider boxes in the specified group
+            for (var gi = 0; gi < groupIndices.length; gi++) {
+                var idx = groupIndices[gi];
+                var box = this.box_array.at(idx);
+                if (box.is_packed)
+                    continue;
+                var orientations = this.getValidOrientations(box);
+                var availableWidth = this.pallet.layout_width - currentX;
+                var availableLength = this.remain_layout_length - currentZ;
+                for (var j = 0; j < orientations.length; j++) {
+                    var orient = orientations[j];
+                    if (orient.width <= availableWidth &&
+                        orient.height <= this.layer_thickness &&
+                        orient.length <= availableLength) {
+                        // In stable mode, check stability for non-ground layers
+                        if (this.stableMode && this.packed_layout_height > 0.01) {
+                            if (!this.check_stability(currentX, currentZ, orient.width, orient.length, this.packed_layout_height)) {
+                                continue;
+                            }
+                        }
+                        var score = 100 - (availableWidth - orient.width) - (availableLength - orient.length);
+                        if (box.rotationMode === "yAxis" && orient.width > orient.length) {
+                            score += 50;
+                        }
+                        if (orient.height === this.layer_thickness) {
+                            score += 200; // Exact height match bonus
+                        }
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestFit = {
+                                box: box,
+                                width: orient.width,
+                                height: orient.height,
+                                length: orient.length
+                            };
+                        }
+                    }
+                }
+            }
+            if (!bestFit)
+                break;
+            bestFit.box.cox = currentX;
+            bestFit.box.coy = this.packed_layout_height;
+            bestFit.box.coz = currentZ;
+            bestFit.box.layout_width = bestFit.width;
+            bestFit.box.layout_height = bestFit.height;
+            bestFit.box.layout_length = bestFit.length;
+            bestFit.box.is_packed = true;
+            this.packed_volume += bestFit.box.volume;
+            packedInLayer++;
+            stablePlacements++;
+            if (bestFit.length > rowMaxLength)
+                rowMaxLength = bestFit.length;
+            currentX += bestFit.width;
+            if (currentX >= this.pallet.layout_width) {
+                currentX = 0;
+                currentZ += rowMaxLength;
+                rowMaxLength = 0;
+            }
+        }
+        return { packed: packedInLayer, stablePlacements: stablePlacements };
+    }
+    /**
+     * <p> Heightmap-based packing: tracks per-product top surfaces instead of uniform layers. </p>
+     *
+     * <p> Instead of dividing the pallet into fixed-thickness layers across the entire floor,
+     * this method maintains candidate XZ positions and computes the Y-height dynamically from
+     * the packed boxes below. This naturally handles mixed-height products without wasting
+     * vertical space above shorter boxes. </p>
+     *
+     * <p> Algorithm (Bottom-Left-Fill with extreme points): </p>
+     * <ol>
+     *   <li> Start with candidate position (0, 0). </li>
+     *   <li> For each candidate (x, z), compute baseY = max top surface of overlapping packed boxes. </li>
+     *   <li> Try all unpacked boxes in all valid orientations, score by lowest baseY &rarr; tightest fit. </li>
+     *   <li> Place the best-scoring (position, box, orientation) triple. </li>
+     *   <li> Generate new candidate positions from the placed box's right and front edges. </li>
+     *   <li> Repeat until no more placements are possible. </li>
+     * </ol>
+     */
+    simulatePlacementWithHeightmap() {
+        // Save current state for rollback
+        var savedBoxStates = [];
+        for (var i = 0; i < this.box_array.size(); i++) {
+            var box = this.box_array.at(i);
+            savedBoxStates.push({
+                is_packed: box.is_packed,
+                cox: box.cox, coy: box.coy, coz: box.coz,
+                layout_width: box.layout_width,
+                layout_height: box.layout_height,
+                layout_length: box.layout_length
+            });
+        }
+        // Reset state
+        this.packing = true;
+        this.packed_volume = 0.0;
+        for (var ui = 0; ui < this.box_array.size(); ui++)
+            this.box_array.at(ui).is_packed = false;
+        var totalPacked = 0;
+        // Candidate XZ positions (extreme points projected onto the floor)
+        var candidateXZ = [{ x: 0, z: 0 }];
+        for (var iter = 0; iter < this.box_array.size(); iter++) {
+            var bestPlacement = null;
+            var bestScore = -Infinity;
+            for (var pi = 0; pi < candidateXZ.length; pi++) {
+                var cx = candidateXZ[pi].x;
+                var cz = candidateXZ[pi].z;
+                if (cx >= this.pallet.layout_width || cz >= this.pallet.layout_length)
+                    continue;
+                for (var bi = 0; bi < this.box_array.size(); bi++) {
+                    var box = this.box_array.at(bi);
+                    if (box.is_packed)
+                        continue;
+                    var orientations = this.getValidOrientations(box);
+                    for (var oi = 0; oi < orientations.length; oi++) {
+                        var orient = orientations[oi];
+                        var w = orient.width, h = orient.height, l = orient.length;
+                        // Check pallet XZ bounds
+                        if (cx + w > this.pallet.layout_width)
+                            continue;
+                        if (cz + l > this.pallet.layout_length)
+                            continue;
+                        // Compute baseY: max top surface of all packed boxes overlapping in XZ
+                        var baseY = 0;
+                        for (var k = 0; k < this.box_array.size(); k++) {
+                            var pk = this.box_array.at(k);
+                            if (!pk.is_packed)
+                                continue;
+                            if (cx < pk.cox + pk.layout_width && cx + w > pk.cox &&
+                                cz < pk.coz + pk.layout_length && cz + l > pk.coz) {
+                                var topY = pk.coy + pk.layout_height;
+                                if (topY > baseY)
+                                    baseY = topY;
+                            }
+                        }
+                        // Check height bound
+                        if (baseY + h > this.pallet.layout_height)
+                            continue;
+                        // Stability check for non-ground placements
+                        if (baseY > 0.01) {
+                            if (!this.check_stability(cx, cz, w, l, baseY))
+                                continue;
+                        }
+                        // Overlap check (safety net)
+                        if (this.overlapsAnyPacked(cx, baseY, cz, w, h, l))
+                            continue;
+                        // Score: fill from bottom, pack tight, prefer larger footprint
+                        var score = -baseY * 100000
+                            - cz * 1000
+                            - cx * 100
+                            + (w * l * h);
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestPlacement = {
+                                boxIndex: bi, x: cx, y: baseY, z: cz,
+                                width: w, height: h, length: l
+                            };
+                        }
+                    }
+                }
+            }
+            if (!bestPlacement)
+                break;
+            // Place the box
+            var placedBox = this.box_array.at(bestPlacement.boxIndex);
+            placedBox.cox = bestPlacement.x;
+            placedBox.coy = bestPlacement.y;
+            placedBox.coz = bestPlacement.z;
+            placedBox.layout_width = bestPlacement.width;
+            placedBox.layout_height = bestPlacement.height;
+            placedBox.layout_length = bestPlacement.length;
+            placedBox.is_packed = true;
+            this.packed_volume += placedBox.volume;
+            totalPacked++;
+            // Add new candidate positions from the placed box's edges
+            candidateXZ.push({ x: bestPlacement.x + bestPlacement.width, z: bestPlacement.z });
+            candidateXZ.push({ x: bestPlacement.x, z: bestPlacement.z + bestPlacement.length });
+        }
+        // Build result in the same format as other candidates
+        var spaceEfficiency = totalPacked > 0 ?
+            (this.packed_volume / (this.pallet.layout_width * this.pallet.layout_height * this.pallet.layout_length)) : 0;
+        var orientationBonus = 0;
+        for (var i = 0; i < this.box_array.size(); i++) {
+            var box = this.box_array.at(i);
+            if (box.is_packed && box.rotationMode === "yAxis") {
+                if (box.layout_width > box.layout_length) {
+                    orientationBonus += 10;
+                }
+            }
+        }
+        var result = {
+            layerThickness: 0,
+            totalPacked: totalPacked,
+            spaceEfficiency: spaceEfficiency,
+            orientationBonus: orientationBonus,
+            stabilityScore: 1.0,
+            boxStates: []
+        };
+        for (var i = 0; i < this.box_array.size(); i++) {
+            var box = this.box_array.at(i);
+            result.boxStates.push({
+                is_packed: box.is_packed,
+                cox: box.cox, coy: box.coy, coz: box.coz,
+                layout_width: box.layout_width,
+                layout_height: box.layout_height,
+                layout_length: box.layout_length
+            });
+        }
+        // Restore original state
+        for (var i = 0; i < this.box_array.size(); i++) {
+            var box = this.box_array.at(i);
+            var saved = savedBoxStates[i];
+            box.is_packed = saved.is_packed;
+            box.cox = saved.cox;
+            box.coy = saved.coy;
+            box.coz = saved.coz;
+            box.layout_width = saved.layout_width;
+            box.layout_height = saved.layout_height;
+            box.layout_length = saved.layout_length;
+        }
+        return result;
     }
     /**
      * <p> Find the best box that fits at the given position </p>
@@ -699,7 +1154,7 @@ class Boxologic {
         var availableLength = this.remain_layout_length - z; // Z direction
         var availableHeight = this.layer_thickness; // Y direction (layer thickness)
         var bestFit = null;
-        var bestScore = -1;
+        var bestScore = -Infinity;
         for (var i = 0; i < this.box_array.size(); i++) {
             var box = this.box_array.at(i);
             if (box.is_packed)
@@ -1342,19 +1797,11 @@ class Boxologic {
             var current_x = prev.equals(this.scrap_list.end()) ? 0 : prev.value.cumx;
             var current_z = this.scrap_min_z.value.cumz;
             var current_y = this.packed_layout_height;
-            // For dim2 <= hy case (box fits within current layer)
-            if (dim2 <= hy) {
-                var placement_y = current_y + hy - dim2;
-                if (!this.check_stability(current_x, current_z, dim1, dim3, placement_y)) {
-                    return; // Skip this placement if unstable
-                }
-            }
-            // For dim2 > hy case (box extends above current layer)
-            else {
-                var placement_y = current_y + hy;
-                if (!this.check_stability(current_x, current_z, dim1, dim3, placement_y)) {
-                    return; // Skip this placement if unstable
-                }
+            // pack_layer() always places boxes at coy = packed_layout_height (layer base),
+            // so the stability check must use current_y (the layer base), NOT an
+            // offset like current_y + hy - dim2 which would check a phantom floating position.
+            if (!this.check_stability(current_x, current_z, dim1, dim3, current_y)) {
+                return; // Skip this placement if unstable
             }
         }
         // Apply scoring bonus for optimal Y-axis rotation orientation (130×200×31)
@@ -1521,6 +1968,11 @@ class Boxologic {
         this.pallet.set_orientation(this.best_orientation);
         this.construct_layers();
         this.iterate_layer(this.best_layer);
+        // Gap filling: try to place remaining unpacked boxes into gaps
+        // above already-packed boxes where stability is satisfied.
+        if (this.stableMode) {
+            this.fillGaps();
+        }
         // Apply coordinate transformations after packing is complete
         // so that stability checks during packing use consistent internal coordinates
         for (var i = 0; i < this.box_array.size(); i++) {
@@ -1529,6 +1981,91 @@ class Boxologic {
                 this.write_box_file();
             }
         }
+    }
+    /**
+     * <p> Fill gaps above packed boxes with remaining unpacked boxes. </p>
+     *
+     * <p> After the main layer-based packing, there may be gaps above shorter boxes
+     * (e.g., a 25mm-tall box in a 40mm layer leaves 15mm unused). This method tries
+     * to place remaining unpacked boxes on top of any packed box where the stability
+     * check passes and no overlap occurs. </p>
+     */
+    fillGaps() {
+        var changed = true;
+        while (changed) {
+            changed = false;
+            for (var i = 0; i < this.box_array.size(); i++) {
+                var box = this.box_array.at(i);
+                if (box.is_packed)
+                    continue;
+                // Collect all top surfaces of packed boxes as candidate positions
+                var positions = [];
+                for (var j = 0; j < this.box_array.size(); j++) {
+                    var packed = this.box_array.at(j);
+                    if (!packed.is_packed)
+                        continue;
+                    positions.push({
+                        x: packed.cox,
+                        y: packed.coy + packed.layout_height,
+                        z: packed.coz
+                    });
+                }
+                var orientations = this.getValidOrientations(box);
+                var placed = false;
+                for (var pi = 0; pi < positions.length && !placed; pi++) {
+                    for (var oi = 0; oi < orientations.length && !placed; oi++) {
+                        var orient = orientations[oi];
+                        var x = positions[pi].x;
+                        var y = positions[pi].y;
+                        var z = positions[pi].z;
+                        // Check within pallet bounds
+                        if (x + orient.width > this.pallet.layout_width)
+                            continue;
+                        if (y + orient.height > this.pallet.layout_height)
+                            continue;
+                        if (z + orient.length > this.pallet.layout_length)
+                            continue;
+                        // Check stability (support ratio >= 70%)
+                        if (!this.check_stability(x, z, orient.width, orient.length, y))
+                            continue;
+                        // Check no overlap with existing packed boxes
+                        if (this.overlapsAnyPacked(x, y, z, orient.width, orient.height, orient.length))
+                            continue;
+                        // Place the box
+                        box.cox = x;
+                        box.coy = y;
+                        box.coz = z;
+                        box.layout_width = orient.width;
+                        box.layout_height = orient.height;
+                        box.layout_length = orient.length;
+                        box.is_packed = true;
+                        this.packed_volume += box.volume;
+                        placed = true;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    /**
+     * <p> Check if a proposed box placement overlaps any already-packed box. </p>
+     */
+    overlapsAnyPacked(x, y, z, w, h, l) {
+        for (var i = 0; i < this.box_array.size(); i++) {
+            var packed = this.box_array.at(i);
+            if (!packed.is_packed)
+                continue;
+            // AABB overlap test
+            if (x < packed.cox + packed.layout_width &&
+                x + w > packed.cox &&
+                y < packed.coy + packed.layout_height &&
+                y + h > packed.coy &&
+                z < packed.coz + packed.layout_length &&
+                z + l > packed.coz) {
+                return true;
+            }
+        }
+        return false;
     }
     /**
      * <p> Determine a {@link Box}. </p>
@@ -1857,33 +2394,48 @@ class GAWrapperArray extends packer.WrapperArray {
         super();
         this.result = new tstl_1.default.HashMap();
         this.price = 0.0;
+        this.packingOrder = []; // packing priority per instance (lower = packed earlier)
         if (obj instanceof packer.InstanceArray) {
             this.instanceArray = obj;
+            // Initialize with sequential order
+            for (var i = 0; i < obj.size(); i++)
+                this.packingOrder.push(i);
         }
         else {
             var genes = obj;
             this.instanceArray = genes.instanceArray;
             this.assign(genes.begin(), genes.end());
+            // Copy packing order from source
+            this.packingOrder = genes.packingOrder.slice();
         }
     }
     constructResult() {
         if (this.result.empty() == false)
             return; // IF RESULT IS ALREADY DEDUCTED
-        // INSTANCE AND WRAPPER IS CORRESPOND, 1:1 RELATIONSHIP.
+        // Collect (instance, order) pairs per wrapper group
+        var groupInstances = new tstl_1.default.HashMap(); // wrapperName -> [{instance, order}]
         for (var i = 0; i < this.size(); i++) {
             var wrapper = this.at(i);
             if (this.result.has(wrapper.getName()) == false) {
                 var wrapperGroup_1 = new packer.WrapperGroup(wrapper);
                 wrapperGroup_1.options = this.options;
                 this.result.set(wrapper.getName(), wrapperGroup_1);
+                groupInstances.set(wrapper.getName(), []);
             }
-            var wrapperGroup = this.result.get(wrapper.getName());
             var instance = this.instanceArray.at(i);
-            if (wrapperGroup.allocate(instance) == false) {
-                // THE INSTANCE IS GREATER THAN THE WRAPPER
-                // THIS GENE IS NOT VALID SO THAT CANNOT PARTICIPATE IN THE OPTIMIZATION PROCESS
-                this.valid = false;
-                return;
+            var order = (i < this.packingOrder.length) ? this.packingOrder[i] : i;
+            groupInstances.get(wrapper.getName()).push({ instance: instance, order: order });
+        }
+        // Sort instances within each group by packing order, then allocate
+        for (var it = groupInstances.begin(); !it.equals(groupInstances.end()); it = it.next()) {
+            var items = it.second;
+            items.sort(function (a, b) { return a.order - b.order; });
+            var wrapperGroup = this.result.get(it.first);
+            for (var j = 0; j < items.length; j++) {
+                if (wrapperGroup.allocate(items[j].instance) == false) {
+                    this.valid = false;
+                    return;
+                }
             }
         }
         // THE GENE IS VALID, THEN CALCULATE THE COST
@@ -1915,6 +2467,75 @@ class GAWrapperArray extends packer.WrapperArray {
             return true;
         else
             return false;
+    }
+    /**
+     * @brief Create a mutated copy of this gene array.
+     *
+     * @details Randomly changes wrapper assignments for some instances.
+     * The mutation rate determines the probability of each gene being mutated.
+     *
+     * @param wrapperArray Available wrapper types.
+     * @param mutationRate Probability of each gene being mutated (0.0 ~ 1.0).
+     * @return A new GAWrapperArray with mutations applied.
+     */
+    mutate(wrapperArray, mutationRate) {
+        var child = new packer.GAWrapperArray(this.instanceArray);
+        child.options = this.options;
+        child.assign(this.begin(), this.end());
+        child.packingOrder = this.packingOrder.slice();
+        // Wrapper type mutation
+        for (var i = 0; i < child.size(); i++) {
+            if (Math.random() < mutationRate) {
+                var instance = this.instanceArray.at(i);
+                // Collect containable wrappers for this instance
+                var containable = [];
+                for (var j = 0; j < wrapperArray.size(); j++) {
+                    if (wrapperArray.at(j).containable(instance))
+                        containable.push(wrapperArray.at(j));
+                }
+                if (containable.length > 0) {
+                    var randomIndex = Math.floor(Math.random() * containable.length);
+                    child.set(i, containable[randomIndex]);
+                }
+            }
+        }
+        // Packing order mutation: swap two random positions
+        if (child.packingOrder.length >= 2) {
+            var numSwaps = Math.max(1, Math.floor(child.packingOrder.length * mutationRate));
+            for (var s = 0; s < numSwaps; s++) {
+                var a = Math.floor(Math.random() * child.packingOrder.length);
+                var b = Math.floor(Math.random() * child.packingOrder.length);
+                var tmp = child.packingOrder[a];
+                child.packingOrder[a] = child.packingOrder[b];
+                child.packingOrder[b] = tmp;
+            }
+        }
+        return child;
+    }
+    /**
+     * @brief Create a child by crossover of two parent gene arrays.
+     *
+     * @details Performs uniform crossover: for each gene position,
+     * randomly selects the gene from either parent.
+     *
+     * @param partner The other parent GAWrapperArray.
+     * @return A new GAWrapperArray combining genes from both parents.
+     */
+    crossover(partner) {
+        var child = new packer.GAWrapperArray(this.instanceArray);
+        child.options = this.options;
+        child.packingOrder = [];
+        for (var i = 0; i < this.size(); i++) {
+            if (Math.random() < 0.5) {
+                child.push_back(this.at(i));
+                child.packingOrder.push(this.packingOrder[i] !== undefined ? this.packingOrder[i] : i);
+            }
+            else {
+                child.push_back(partner.at(i));
+                child.packingOrder.push(partner.packingOrder[i] !== undefined ? partner.packingOrder[i] : i);
+            }
+        }
+        return child;
     }
 }
 packer.GAWrapperArray = GAWrapperArray;
@@ -1964,7 +2585,7 @@ class Packer extends packer.protocol.Entity {
             instanceArray = null;
         }
         if (options === void 0) {
-            options = { isNotUseBeamSearch: false };
+            options = { isNotUseBeamSearch: false, isUseGeneticAlgorithm: false };
         }
         super();
         if (wrapperArray == null && instanceArray == null) {
@@ -2022,11 +2643,68 @@ class Packer extends packer.protocol.Entity {
             ////////////////////////////////////////
             // CONSTRUCT INITIAL SET
             var geneArray = this.initGenes();
-            // EVOLVE
-            // IN JAVA_SCRIPT VERSION, GENETIC_ALGORITHM IS NOT IMPLEMENTED YET.
-            // HOWEVER, IN C++ VERSION, IT IS FULLY SUPPORTED
-            //	http://samchon.github.io/framework/api/cpp/d5/d28/classsamchon_1_1library_1_1GeneticAlgorithm.html
-            // IT WILL BE SUPPORTED SOON
+            // EVOLVE WITH GENETIC ALGORITHM
+            if (this.options.isUseGeneticAlgorithm) {
+                var POPULATION_SIZE = 10;
+                var MAX_GENERATIONS = 20;
+                var MUTATION_RATE = 0.15;
+                var TOURNAMENT_SIZE = 3;
+                var STAGNATION_LIMIT = 5;
+                // Generate initial population from the seed gene
+                var population = [geneArray];
+                for (var p = 1; p < POPULATION_SIZE; p++) {
+                    population.push(geneArray.mutate(this.wrapperArray, 0.3));
+                }
+                // Evaluate all individuals
+                for (var p = 0; p < population.length; p++) {
+                    population[p].constructResult();
+                }
+                // Find initial best
+                var best = null;
+                for (var p = 0; p < population.length; p++) {
+                    if (best == null || population[p].less(best))
+                        best = population[p];
+                }
+                var stagnationCount = 0;
+                // Evolution loop
+                for (var gen = 0; gen < MAX_GENERATIONS; gen++) {
+                    var newPopulation = [];
+                    // Elitism: carry over the best individual
+                    newPopulation.push(best);
+                    // Generate offspring
+                    for (var p = 1; p < POPULATION_SIZE; p++) {
+                        // Tournament selection for two parents
+                        var parentA = this._tournamentSelect(population, TOURNAMENT_SIZE);
+                        var parentB = this._tournamentSelect(population, TOURNAMENT_SIZE);
+                        // Crossover
+                        var child = parentA.crossover(parentB);
+                        // Mutation
+                        child = child.mutate(this.wrapperArray, MUTATION_RATE);
+                        // Evaluate
+                        child.constructResult();
+                        newPopulation.push(child);
+                    }
+                    population = newPopulation;
+                    // Find best of this generation
+                    var genBest = null;
+                    for (var p = 0; p < population.length; p++) {
+                        if (genBest == null || population[p].less(genBest))
+                            genBest = population[p];
+                    }
+                    // Update global best and check stagnation
+                    if (genBest.less(best)) {
+                        best = genBest;
+                        stagnationCount = 0;
+                    }
+                    else {
+                        stagnationCount++;
+                    }
+                    // Early termination if no improvement
+                    if (stagnationCount >= STAGNATION_LIMIT)
+                        break;
+                }
+                geneArray = best;
+            }
             // FETCH RESULT
             var result = geneArray.getResult();
             for (var it = result.begin(); !it.equals(result.end()); it = it.next())
@@ -2154,6 +2832,26 @@ class Packer extends packer.protocol.Entity {
         geneArray.options = this.options;
         geneArray.assign(genes.begin(), genes.end());
         return geneArray;
+    }
+    /**
+     * @brief Tournament selection for genetic algorithm.
+     *
+     * @details Randomly selects tournamentSize individuals from the population
+     * and returns the best one (lowest cost).
+     *
+     * @param population Array of GAWrapperArray individuals.
+     * @param tournamentSize Number of individuals to compete.
+     * @return The best individual from the tournament.
+     */
+    _tournamentSelect(population, tournamentSize) {
+        var best = null;
+        for (var t = 0; t < tournamentSize; t++) {
+            var idx = Math.floor(Math.random() * population.length);
+            var candidate = population[idx];
+            if (best == null || candidate.less(best))
+                best = candidate;
+        }
+        return best;
     }
     /**
      * Try to repack each wrappers to another type.

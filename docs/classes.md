@@ -46,10 +46,11 @@
 | `optimize()` | 最適化を実行し、結果の `WrapperArray` を返す |
 | `initGenes()` | 遺伝的アルゴリズムの初期遺伝子列（各インスタンスの割当先Wrapper）を生成する |
 | `repack(wrappers)` | パック済みWrapperを別のWrapper型に詰め替えてコスト削減を試みる |
+| `_tournamentSelect(population, tournamentSize)` | トーナメント選択。集団からランダムにtournamentSize個体を選び最良を返す |
 
 **内部動作:**
 - Wrapper型が1種類のみの場合 → `WrapperGroup` に委譲して直接最適化
-- Wrapper型が複数の場合 → `initGenes()` でコスト最小割当を行い、将来的には遺伝的アルゴリズムで進化させる（現在のJS版では未実装、C++版では実装済み）
+- Wrapper型が複数の場合 → `initGenes()` で初期個体を生成し、遺伝的アルゴリズム（交叉・突然変異・選択）で進化させる（`options.isUseGeneticAlgorithm = true` で有効化可能、デフォルト無効）
 
 ---
 
@@ -160,8 +161,8 @@
 | `constructResult()` | 遺伝子からWrapperGroupを構築し、最適化を実行してコストを計算 |
 | `getResult()` | 最適化結果のマップを返す |
 | `less(obj)` | 他の個体とのコスト比較（遺伝的アルゴリズムの適合度評価に使用） |
-
-**備考:** 現在のJavaScript版では遺伝的アルゴリズムの進化ループは未実装。`initGenes()` で生成された初期個体がそのまま最終解として使用される。
+| `mutate(wrapperArray, mutationRate)` | 突然変異した新個体を生成。各遺伝子を指定確率で収容可能な別のWrapper型にランダム変更 |
+| `crossover(partner)` | 一様交叉で2つの親から子個体を生成。各遺伝子位置で50%の確率で親A/Bを選択 |
 
 ---
 
@@ -224,7 +225,7 @@
 
 **ファイル:** `src/3d-bin-packing/3d-bin-packing.js` (L286〜L1652)
 
-**役割:** Boxologicアルゴリズム（Air Force Bin Packing）のファサードかつ実装本体。パレット（Wrapper）への荷物詰め込みを実行する中核クラス。
+**役割:** Boxologicアルゴリズム（Air Force Bin Packing）のファサードかつ実装本体。パレット（Wrapper）への荷物詰め込みを実行する中核クラス。安定モード時は標準レイヤー方式に加え、ハイトマップベースパッカーとギャップ充填ポストプロセスを併用する。
 
 **抽象化しているもの:** 「1つのコンテナに対してインスタンス群を最適配置する」という単一コンテナ問題の全解法ロジック。
 
@@ -247,7 +248,10 @@
 | `check_found()` | 検索結果を反映し、scrapリストを更新 |
 | `volume_check()` | 100%充填達成チェック |
 | `find_layer(thickness)` | 残りスペースに対する次のレイヤー厚さを決定 |
-| `report_results()` | 最良解で再パッキングし座標変換を適用 |
+| `report_results()` | 最良解で再パッキングし座標変換を適用。安定モード時は `fillGaps()` を実行 |
+| `fillGaps()` | レイヤー間の隙間に未パックBoxを後処理で配置（安定モード時） |
+| `overlapsAnyPacked(x, y, z, w, h, l)` | 提案配置が既存パック済みBoxとAABB重複するか判定 |
+| `simulatePlacementWithHeightmap()` | ハイトマップベースのパッキングシミュレーション（安定モード用） |
 | `write_box_file()` | パレット向きに応じた座標変換 |
 
 ---
@@ -355,4 +359,4 @@
 
 **戻り値:** 支持率（0.0〜1.0）
 
-安定モードでのパッキング中（`Boxologic.check_stability`）とデコード後のWrap生成（`Boxologic.decode`）の両方で使用される。外部テストコードからも `packer.calculateSupportRatio` として利用可能。
+安定モードでのパッキング中（`Boxologic.check_stability`）、ハイトマップベースパッカー（`Boxologic.simulatePlacementWithHeightmap`）、ギャップ充填（`Boxologic.fillGaps`）、およびデコード後のWrap生成（`Boxologic.decode`）で使用される。外部テストコードからも `packer.calculateSupportRatio` として利用可能。
